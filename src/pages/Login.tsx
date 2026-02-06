@@ -161,12 +161,6 @@ export const Login = () => {
               Sign in with Google
             </Button>
           </form>
-
-          <div className="mt-6 text-center text-sm text-gray-500">
-            <p>Admin login: username admin, password admin123</p>
-            <p>Google login: user emails end with 2 digits before @bitsathy.ac.in</p>
-            <p>Reviewer emails are @bitsathy.ac.in without trailing 2 digits</p>
-          </div>
         </div>
       </div>
     </div>
