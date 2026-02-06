@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Shield, LogOut, Users, FileText, UserCheck, Settings, Trash2, Lock } from 'lucide-react';
+import { Shield, LogOut, Users, FileText, UserCheck, Settings, Trash2, Lock, Filter } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { Modal } from '../components/Modal';
@@ -33,6 +33,7 @@ export const AdminDashboard = () => {
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests');
   const [userTab, setUserTab] = useState<'admins' | 'reviewers' | 'users'>('admins');
+  const [requestFilter, setRequestFilter] = useState<string>('all');
   const [actionLoading, setActionLoading] = useState(false);
 
   useEffect(() => {
@@ -155,6 +156,10 @@ export const AdminDashboard = () => {
     pendingRequests: requests.filter(r => r.status === 'pending' || r.status === 'under_review').length
   };
 
+  const filteredRequests = requestFilter === 'all'
+    ? requests
+    : requests.filter((request) => request.status === requestFilter);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 shadow-sm">
@@ -251,27 +256,46 @@ export const AdminDashboard = () => {
 
         <Card>
           <CardHeader>
-            <div className="flex border-b border-gray-200">
-              <button
-                onClick={() => setActiveTab('requests')}
-                className={`px-6 py-3 font-medium transition-colors ${
-                  activeTab === 'requests'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                Change Requests
-              </button>
-              <button
-                onClick={() => setActiveTab('users')}
-                className={`px-6 py-3 font-medium transition-colors ${
-                  activeTab === 'users'
-                    ? 'text-blue-600 border-b-2 border-blue-600'
-                    : 'text-gray-600 hover:text-gray-900'
-                }`}
-              >
-                User Management
-              </button>
+            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200">
+              <div className="flex">
+                <button
+                  onClick={() => setActiveTab('requests')}
+                  className={`px-6 py-3 font-medium transition-colors ${
+                    activeTab === 'requests'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  Change Requests
+                </button>
+                <button
+                  onClick={() => setActiveTab('users')}
+                  className={`px-6 py-3 font-medium transition-colors ${
+                    activeTab === 'users'
+                      ? 'text-blue-600 border-b-2 border-blue-600'
+                      : 'text-gray-600 hover:text-gray-900'
+                  }`}
+                >
+                  User Management
+                </button>
+              </div>
+              {activeTab === 'requests' && (
+                <div className="flex items-center gap-2 pr-2 py-3">
+                  <Filter className="w-4 h-4 text-gray-500" />
+                  <Select
+                    value={requestFilter}
+                    onChange={(e) => setRequestFilter(e.target.value)}
+                    options={[
+                      { value: 'all', label: 'All Requests' },
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'under_review', label: 'Under Review' },
+                      { value: 'approved', label: 'Approved' },
+                      { value: 'rejected', label: 'Rejected' }
+                    ]}
+                    className="w-48"
+                  />
+                </div>
+              )}
             </div>
           </CardHeader>
 
@@ -283,7 +307,7 @@ export const AdminDashboard = () => {
               </div>
             ) : activeTab === 'requests' ? (
               <div className="space-y-4">
-                {requests.map((request) => (
+                {filteredRequests.map((request) => (
                   <div
                     key={request.id}
                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"

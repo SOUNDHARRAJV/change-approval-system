@@ -162,34 +162,35 @@ export const UserDashboard = () => {
 
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Change Requests</h2>
                 <p className="text-sm text-gray-600 mt-1">Manage your change requests</p>
               </div>
-              <Button onClick={() => setShowModal(true)} icon={<Plus className="w-4 h-4" />}>
-                New Request
-              </Button>
+              <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <Filter className="w-4 h-4 text-gray-500" />
+                  <Select
+                    value={filter}
+                    onChange={(e) => setFilter(e.target.value)}
+                    options={[
+                      { value: 'all', label: 'All Requests' },
+                      { value: 'pending', label: 'Pending' },
+                      { value: 'under_review', label: 'Under Review' },
+                      { value: 'approved', label: 'Approved' },
+                      { value: 'rejected', label: 'Rejected' }
+                    ]}
+                    className="w-48"
+                  />
+                </div>
+                <Button onClick={() => setShowModal(true)} icon={<Plus className="w-4 h-4" />}>
+                  New Request
+                </Button>
+              </div>
             </div>
           </CardHeader>
 
           <CardBody>
-            <div className="mb-4 flex items-center gap-2">
-              <Filter className="w-4 h-4 text-gray-500" />
-              <Select
-                value={filter}
-                onChange={(e) => setFilter(e.target.value)}
-                options={[
-                  { value: 'all', label: 'All Requests' },
-                  { value: 'pending', label: 'Pending' },
-                  { value: 'under_review', label: 'Under Review' },
-                  { value: 'approved', label: 'Approved' },
-                  { value: 'rejected', label: 'Rejected' }
-                ]}
-                className="max-w-xs"
-              />
-            </div>
-
             {loading ? (
               <div className="text-center py-12">
                 <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>

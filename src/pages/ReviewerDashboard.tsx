@@ -3,7 +3,7 @@ import { UserCheck, LogOut, Filter, MessageSquare, CheckCircle, XCircle, Clock }
 import { Button } from '../components/Button';
 import { Card, CardHeader, CardBody } from '../components/Card';
 import { Modal } from '../components/Modal';
-import { Textarea } from '../components/Input';
+import { Select, Textarea } from '../components/Input';
 import { StatusBadge, PriorityBadge, Badge } from '../components/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
@@ -190,24 +190,25 @@ export const ReviewerDashboard = () => {
 
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Change Requests</h2>
                 <p className="text-sm text-gray-600 mt-1">Review and approve change requests</p>
               </div>
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4 text-gray-500" />
-                <select
+                <Select
                   value={filter}
                   onChange={(e) => setFilter(e.target.value)}
-                  className="px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
-                >
-                  <option value="all">All Requests</option>
-                  <option value="pending">Pending</option>
-                  <option value="under_review">Under Review</option>
-                  <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                </select>
+                  options={[
+                    { value: 'all', label: 'All Requests' },
+                    { value: 'pending', label: 'Pending' },
+                    { value: 'under_review', label: 'Under Review' },
+                    { value: 'approved', label: 'Approved' },
+                    { value: 'rejected', label: 'Rejected' }
+                  ]}
+                  className="w-48"
+                />
               </div>
             </div>
           </CardHeader>
