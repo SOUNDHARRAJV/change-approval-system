@@ -161,8 +161,6 @@ export const Login = () => {
               Sign in with Google
             </Button>
           </form>
-
-        
         </div>
       </div>
     </div>
