@@ -56,3 +56,10 @@ create index if not exists idx_change_requests_user_id on public.change_requests
 create index if not exists idx_change_requests_status on public.change_requests(status);
 create index if not exists idx_notifications_user_id on public.notifications(user_id);
 create index if not exists idx_admin_credentials_username on public.admin_credentials(username);
+
+-- Disable RLS to allow admin login demo
+alter table public.admin_credentials disable row level security;
+alter table public.users disable row level security;
+alter table public.change_requests disable row level security;
+alter table public.comments disable row level security;
+alter table public.notifications disable row level security;

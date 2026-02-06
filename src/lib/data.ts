@@ -32,29 +32,110 @@ export interface Comment {
 }
 
 export const getAllUsers = async (): Promise<User[]> => {
-  const { data, error } = await supabase.from('users').select('*').order('created_at', { ascending: true });
-  if (error) {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users?order=created_at.asc`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error('Failed to fetch users:', response.statusText);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data as User[];
+  } catch (error) {
     console.error('Failed to fetch users:', error);
     return [];
   }
-  return data as User[];
 };
 
 export const getUserById = async (userId: string): Promise<User | null> => {
-  const { data, error } = await supabase.from('users').select('*').eq('id', userId).single();
-  if (error) {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return null;
+    }
+    
+    const data = await response.json();
+    return data.length > 0 ? (data[0] as User) : null;
+  } catch (error) {
+    console.error('Failed to fetch user by ID:', error);
     return null;
   }
-  return data as User;
 };
 
 export const getUserByEmail = async (email: string): Promise<User | null> => {
-  const normalizedEmail = email.trim().toLowerCase();
-  const { data, error } = await supabase.from('users').select('*').eq('email', normalizedEmail).single();
-  if (error) {
+  try {
+    const normalizedEmail = email.trim().toLowerCase();
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users?email=eq.${encodeURIComponent(normalizedEmail)}`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return null;
+    }
+    
+    const data = await response.json();
+    return data.length > 0 ? (data[0] as User) : null;
+  } catch (error) {
+    console.error('Failed to fetch user by email:', error);
     return null;
   }
-  return data as User;
 };
 
 export const upsertOAuthUser = async (
@@ -64,55 +145,159 @@ export const upsertOAuthUser = async (
   authId?: string
 ): Promise<User> => {
   const normalizedEmail = email.trim().toLowerCase();
-  const existing = await getUserByEmail(normalizedEmail);
+  const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+  const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  
+  try {
+    const existing = await getUserByEmail(normalizedEmail);
 
-  if (existing) {
-    const { data, error } = await supabase
-      .from('users')
-      .update({
-        full_name: existing.full_name || fullName || normalizedEmail.split('@')[0] || 'User',
-        is_active: true,
-        auth_id: authId || existing.auth_id
-      })
-      .eq('id', existing.id)
-      .select('*')
-      .single();
-
-    if (error) {
-      console.error('Failed to update OAuth user:', error);
-      return existing;
+    if (existing) {
+      // Update existing user
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      
+      const response = await fetch(
+        `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(existing.id)}`,
+        {
+          method: 'PATCH',
+          headers: {
+            'apikey': supabaseKey,
+            'Authorization': `Bearer ${supabaseKey}`,
+            'Content-Type': 'application/json',
+            'Prefer': 'return=representation'
+          },
+          body: JSON.stringify({
+            full_name: existing.full_name || fullName || normalizedEmail.split('@')[0] || 'User',
+            auth_id: authId || existing.auth_id,
+            role
+          }),
+          signal: controller.signal
+        }
+      );
+      
+      clearTimeout(timeoutId);
+      
+      if (!response.ok) {
+        console.error('Failed to update OAuth user:', response.statusText);
+        return existing;
+      }
+      
+      const data = await response.json();
+      return data[0] as User;
     }
-    return data as User;
-  }
 
-  const newUser: User = {
-    id: authId || `oauth_${Date.now()}`,
-    auth_id: authId,
-    email: normalizedEmail,
-    full_name: fullName || normalizedEmail.split('@')[0] || 'User',
-    role,
-    is_active: true,
-    created_at: new Date().toISOString()
-  };
+    // Create new user
+    const newUser: User = {
+      id: authId || `oauth_${Date.now()}`,
+      auth_id: authId,
+      email: normalizedEmail,
+      full_name: fullName || normalizedEmail.split('@')[0] || 'User',
+      role,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
 
-  const { data, error } = await supabase.from('users').insert([newUser]).select('*').single();
-  if (error) {
-    console.error('Failed to create OAuth user:', error);
-    return newUser;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users`,
+      {
+        method: 'POST',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json',
+          'Prefer': 'return=representation'
+        },
+        body: JSON.stringify(newUser),
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error('Failed to create OAuth user:', response.statusText);
+      return newUser;
+    }
+    
+    const data = await response.json();
+    return data[0] as User;
+  } catch (error) {
+    console.error('Failed to upsert OAuth user:', error);
+    return {
+      id: authId || `oauth_${Date.now()}`,
+      auth_id: authId,
+      email: normalizedEmail,
+      full_name: fullName || normalizedEmail.split('@')[0] || 'User',
+      role,
+      is_active: true,
+      created_at: new Date().toISOString()
+    };
   }
-  return data as User;
 };
 
 export const toggleUserStatus = async (userId: string): Promise<boolean> => {
-  const user = await getUserById(userId);
-  if (!user) return false;
-  const { error } = await supabase.from('users').update({ is_active: !user.is_active }).eq('id', userId);
-  return !error;
+  try {
+    const user = await getUserById(userId);
+    if (!user) return false;
+    
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ is_active: !user.is_active }),
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (error) {
+    console.error('Failed to toggle user status:', error);
+    return false;
+  }
 };
 
 export const deleteUser = async (userId: string): Promise<boolean> => {
-  const { error } = await supabase.from('users').delete().eq('id', userId);
-  return !error;
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 5000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(userId)}`,
+      {
+        method: 'DELETE',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    return response.ok;
+  } catch (error) {
+    console.error('Failed to delete user:', error);
+    return false;
+  }
 };
 
 export const createChangeRequest = async (
@@ -141,42 +326,145 @@ export const createChangeRequest = async (
 };
 
 export const getAllChangeRequests = async (): Promise<ChangeRequest[]> => {
-  const { data, error } = await supabase.from('change_requests').select('*').order('created_at', { ascending: false });
-  if (error) {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/change_requests?order=created_at.desc`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error('Failed to fetch change requests:', response.statusText);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data as ChangeRequest[];
+  } catch (error) {
     console.error('Failed to fetch change requests:', error);
     return [];
   }
-  return data as ChangeRequest[];
 };
 
 export const getChangeRequestsByUserId = async (userId: string): Promise<ChangeRequest[]> => {
-  const { data, error } = await supabase.from('change_requests').select('*').eq('user_id', userId).order('created_at', { ascending: false });
-  if (error) {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/change_requests?user_id=eq.${encodeURIComponent(userId)}&order=created_at.desc`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error('Failed to fetch user requests:', response.statusText);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data as ChangeRequest[];
+  } catch (error) {
     console.error('Failed to fetch user requests:', error);
     return [];
   }
-  return data as ChangeRequest[];
 };
 
 export const getPendingChangeRequests = async (): Promise<ChangeRequest[]> => {
-  const { data, error } = await supabase
-    .from('change_requests')
-    .select('*')
-    .in('status', ['pending', 'under_review'])
-    .order('created_at', { ascending: false });
-  if (error) {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/change_requests?or=(status.eq.pending,status.eq.under_review)&order=created_at.desc`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      console.error('Failed to fetch pending requests:', response.statusText);
+      return [];
+    }
+    
+    const data = await response.json();
+    return data as ChangeRequest[];
+  } catch (error) {
     console.error('Failed to fetch pending requests:', error);
     return [];
   }
-  return data as ChangeRequest[];
 };
 
 export const getChangeRequestById = async (requestId: string): Promise<ChangeRequest | null> => {
-  const { data, error } = await supabase.from('change_requests').select('*').eq('id', requestId).single();
-  if (error) {
+  try {
+    const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+    const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    
+    const response = await fetch(
+      `${supabaseUrl}/rest/v1/change_requests?id=eq.${encodeURIComponent(requestId)}`,
+      {
+        method: 'GET',
+        headers: {
+          'apikey': supabaseKey,
+          'Authorization': `Bearer ${supabaseKey}`,
+          'Content-Type': 'application/json'
+        },
+        signal: controller.signal
+      }
+    );
+    
+    clearTimeout(timeoutId);
+    
+    if (!response.ok) {
+      return null;
+    }
+    
+    const data = await response.json();
+    return data.length > 0 ? (data[0] as ChangeRequest) : null;
+  } catch (error) {
     return null;
   }
-  return data as ChangeRequest;
 };
 
 export const updateChangeRequestStatus = async (

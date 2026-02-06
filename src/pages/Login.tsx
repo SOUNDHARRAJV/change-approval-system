@@ -3,6 +3,7 @@ import { Shield } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
 import { useAuth } from '../contexts/AuthContext';
+import { checkSupabaseConnection } from '../lib/supabase';
 import { useToast } from '../components/Toast';
 
 export const Login = () => {
@@ -10,6 +11,7 @@ export const Login = () => {
   const [username, setUsername] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [connectionError, setConnectionError] = useState('');
   const { authError, clearAuthError, loginAdmin, loginWithGoogle } = useAuth();
   const { showToast } = useToast();
 
@@ -20,6 +22,22 @@ export const Login = () => {
       clearAuthError();
     }
   }, [authError, clearAuthError, showToast]);
+
+  useEffect(() => {
+    let isActive = true;
+    checkSupabaseConnection()
+      .then((result) => {
+        if (!isActive) return;
+        setConnectionError(result.ok ? '' : result.message || 'Supabase is unreachable.');
+      })
+      .catch(() => {
+        if (!isActive) return;
+        setConnectionError('Supabase is unreachable.');
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,6 +84,12 @@ export const Login = () => {
               Sign in to access your dashboard
             </p>
           </div>
+
+          {connectionError && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">
+              {connectionError}
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <Input

@@ -22,11 +22,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
 
-  const isAllowedEmail = (email: string) => email.toLowerCase().endsWith('@bitsathy.ac.in');
+  const reviewerAllowlist = ['soundharraj122005@gmail.com'];
+
+  const isAllowedEmail = (email: string) => {
+    const normalized = email.toLowerCase();
+    return normalized.endsWith('@bitsathy.ac.in') || reviewerAllowlist.includes(normalized);
+  };
 
   const deriveRoleFromEmail = (email: string): 'user' | 'reviewer' | null => {
-    if (!isAllowedEmail(email)) return null;
-    const hasTwoDigitsBeforeDomain = /\d{2}@bitsathy\.ac\.in$/i.test(email);
+    const normalized = email.toLowerCase();
+    if (!isAllowedEmail(normalized)) return null;
+    if (reviewerAllowlist.includes(normalized)) return 'reviewer';
+    const hasTwoDigitsBeforeDomain = /\d{2}@bitsathy\.ac\.in$/i.test(normalized);
     return hasTwoDigitsBeforeDomain ? 'user' : 'reviewer';
   };
 
@@ -46,9 +53,19 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   useEffect(() => {
+    let isMounted = true;
+    const loadingGuard = setTimeout(() => {
+      if (isMounted) {
+        setLoading(false);
+      }
+    }, 6000);
+
     if (!hasSupabaseConfig) {
       setLoading(false);
-      return;
+      return () => {
+        isMounted = false;
+        clearTimeout(loadingGuard);
+      };
     }
 
     const initSession = async () => {
@@ -68,7 +85,13 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             return;
           }
           const existing = await withTimeout(getUserByEmail(sessionUser.email), 4000, null);
-          const role = existing?.role || derivedRole;
+          const normalizedEmail = sessionUser.email.toLowerCase();
+          let role = existing?.role || derivedRole;
+          if (existing?.role === 'admin') {
+            role = 'admin';
+          } else if (reviewerAllowlist.includes(normalizedEmail)) {
+            role = 'reviewer';
+          }
           const fullName =
             sessionUser.user_metadata?.full_name ||
             sessionUser.user_metadata?.name ||
@@ -85,86 +108,204 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               created_at: new Date().toISOString()
             }
           );
+          
+          // Check if user is active
+          if (!dbUser.is_active) {
+            setAuthError('Your account has been disabled. Please contact the administrator to restore access.');
+            await supabase.auth.signOut();
+            setUser(null);
+            return;
+          }
+          
           setUser(dbUser);
         }
       } catch (error) {
         console.error('Failed to initialize auth session:', error);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
 
     initSession();
 
     const { data: listener } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (!isMounted) return;
       if (!hasSupabaseConfig) {
         setUser(null);
+        setLoading(false);
         return;
       }
-      const sessionUser = session?.user;
-      if (sessionUser?.email) {
-        const derivedRole = deriveRoleFromEmail(sessionUser.email);
-        if (!derivedRole) {
-          setAuthError('Only bitsathy.ac.in emails are allowed.');
-          supabase.auth.signOut();
+      try {
+        const sessionUser = session?.user;
+        if (sessionUser?.email) {
+          const derivedRole = deriveRoleFromEmail(sessionUser.email);
+          if (!derivedRole) {
+            setAuthError('Only bitsathy.ac.in emails are allowed.');
+            supabase.auth.signOut();
+            setUser(null);
+            return;
+          }
+          const existing = await getUserByEmail(sessionUser.email);
+          const normalizedEmail = sessionUser.email.toLowerCase();
+          let role = existing?.role || derivedRole;
+          if (existing?.role === 'admin') {
+            role = 'admin';
+          } else if (reviewerAllowlist.includes(normalizedEmail)) {
+            role = 'reviewer';
+          }
+          const fullName =
+            sessionUser.user_metadata?.full_name ||
+            sessionUser.user_metadata?.name ||
+            sessionUser.email.split('@')[0];
+          const dbUser = await upsertOAuthUser(sessionUser.email, fullName, role, sessionUser.id);
+          
+          // Check if user is active
+          if (!dbUser.is_active) {
+            setAuthError('Your account has been disabled. Please contact the administrator to restore access.');
+            supabase.auth.signOut();
+            setUser(null);
+            return;
+          }
+          
+          setUser(dbUser);
+        } else {
           setUser(null);
-          return;
         }
-        const existing = await getUserByEmail(sessionUser.email);
-        const role = existing?.role || derivedRole;
-        const fullName =
-          sessionUser.user_metadata?.full_name ||
-          sessionUser.user_metadata?.name ||
-          sessionUser.email.split('@')[0];
-        const dbUser = await upsertOAuthUser(sessionUser.email, fullName, role, sessionUser.id);
-        setUser(dbUser);
-      } else {
-        setUser(null);
+      } catch (error) {
+        console.error('Failed to sync auth state:', error);
+      } finally {
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     });
 
     return () => {
+      isMounted = false;
+      clearTimeout(loadingGuard);
       listener.subscription.unsubscribe();
     };
   }, []);
 
   const loginAdmin = async (username: string, password: string) => {
-    setLoading(true);
     try {
       if (!hasSupabaseConfig) {
         return { success: false, error: 'Supabase is not configured.' };
       }
 
       const normalizedUser = username.trim().toLowerCase();
-      const { data, error } = await supabase
-        .from('admin_credentials')
-        .select('user_id')
-        .eq('username', normalizedUser)
-        .eq('password', password)
-        .single();
+      console.log('Starting admin login for:', normalizedUser);
+      
+      // Get Supabase URL and key from the client
+      const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
+      const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+      
+      // Direct REST API call to bypass hanging Supabase client
+      console.log('Calling Supabase REST API directly...');
+      
+      try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 5000);
+        
+        const response = await fetch(
+          `${supabaseUrl}/rest/v1/admin_credentials?username=eq.${encodeURIComponent(normalizedUser)}&password=eq.${encodeURIComponent(password)}&select=user_id`,
+          {
+            method: 'GET',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json',
+              'Prefer': 'return=representation'
+            },
+            signal: controller.signal
+          }
+        );
+        
+        clearTimeout(timeoutId);
+        console.log('REST API response status:', response.status);
+        
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('REST API error:', errorText);
+          return { success: false, error: `API Error: ${response.statusText}` };
+        }
+        
+        const credentials = await response.json();
+        console.log('Credentials result:', credentials);
+        
+        if (!credentials || credentials.length === 0) {
+          return { success: false, error: 'Invalid admin credentials.' };
+        }
+        
+        const userId = credentials[0].user_id;
+        
+        // Fetch user
+        const userController = new AbortController();
+        const userTimeoutId = setTimeout(() => userController.abort(), 5000);
+        
+        const userResponse = await fetch(
+          `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(userId)}&select=*`,
+          {
+            method: 'GET',
+            headers: {
+              'apikey': supabaseKey,
+              'Authorization': `Bearer ${supabaseKey}`,
+              'Content-Type': 'application/json'
+            },
+            signal: userController.signal
+          }
+        );
+        
+        clearTimeout(userTimeoutId);
+        
+        if (!userResponse.ok) {
+          return { success: false, error: 'Failed to fetch user profile.' };
+        }
+        
+        const users = await userResponse.json();
+        console.log('User result:', users);
+        
+        if (!users || users.length === 0) {
+          return { success: false, error: 'Admin profile not found.' };
+        }
+        
+        const userData = users[0];
+        
+        if (!userData.is_active) {
+          return { success: false, error: 'Admin account is disabled.' };
+        }
 
-      if (error || !data?.user_id) {
-        return { success: false, error: 'Invalid admin credentials.' };
+        const adminUser: User = {
+          id: userData.id,
+          email: userData.email,
+          full_name: userData.full_name,
+          role: userData.role,
+          is_active: userData.is_active,
+          created_at: userData.created_at
+        };
+        
+        console.log('Admin login successful:', adminUser);
+        setUser(adminUser);
+        return { success: true };
+        
+      } catch (fetchErr) {
+        console.error('Fetch error:', fetchErr);
+        if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
+          return { success: false, error: 'Request timeout. Check your internet connection.' };
+        }
+        return { success: false, error: fetchErr instanceof Error ? fetchErr.message : 'Network error' };
       }
-
-      const adminUser = await getUserById(data.user_id);
-      if (!adminUser) {
-        return { success: false, error: 'Admin profile not found.' };
-      }
-      if (!adminUser.is_active) {
-        return { success: false, error: 'Admin account is disabled.' };
-      }
-
-      setUser(adminUser);
-      return { success: true };
-    } finally {
-      setLoading(false);
+      
+    } catch (err) {
+      console.error('Login exception:', err);
+      return { success: false, error: err instanceof Error ? err.message : 'Login failed. Please try again.' };
     }
   };
 
   const loginWithGoogle = async () => {
     try {
-      setLoading(true);
       if (!hasSupabaseConfig) {
         return { success: false, error: 'Supabase is not configured.' };
       }
@@ -182,16 +323,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       return { success: true };
     } catch (error) {
       return { success: false, error: 'Google sign-in failed' };
-    } finally {
-      setLoading(false);
     }
   };
 
   const logout = () => {
     setUser(null);
+    localStorage.removeItem('adminUser');
     supabase.auth.signOut();
   };
-
   const clearAuthError = () => setAuthError('');
 
   return (

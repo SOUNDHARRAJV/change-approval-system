@@ -41,19 +41,32 @@ export const AdminDashboard = () => {
 
   const loadData = async () => {
     setLoading(true);
-    const [allRequests, allUsers] = await Promise.all([
-      getAllChangeRequests(),
-      getAllUsers()
-    ]);
-    const adminsList = allUsers.filter(u => u.role === 'admin');
-    const reviewersList = allUsers.filter(u => u.role === 'reviewer');
-    const regularUsersList = allUsers.filter(u => u.role === 'user');
+    try {
+      const data = await Promise.race([
+        Promise.all([getAllChangeRequests(), getAllUsers()]),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000))
+      ]);
 
-    setRequests(allRequests);
-    setAdminUsers(adminsList);
-    setReviewerUsers(reviewersList);
-    setRegularUsers(regularUsersList);
-    setLoading(false);
+      if (!data) {
+        showToast('Data load timed out. Check Supabase connection.', 'error');
+        return;
+      }
+
+      const [allRequests, allUsers] = data;
+      const adminsList = allUsers.filter(u => u.role === 'admin');
+      const reviewersList = allUsers.filter(u => u.role === 'reviewer');
+      const regularUsersList = allUsers.filter(u => u.role === 'user');
+
+      setRequests(allRequests);
+      setAdminUsers(adminsList);
+      setReviewerUsers(reviewersList);
+      setRegularUsers(regularUsersList);
+    } catch (error) {
+      console.error('Failed to load admin dashboard data:', error);
+      showToast('Failed to load dashboard data', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleAssignReviewer = async (requestId: string, reviewerId: string) => {
