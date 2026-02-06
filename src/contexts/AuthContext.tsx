@@ -52,6 +52,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const getStoredAdminUser = (): User | null => {
+    try {
+      const raw = localStorage.getItem('adminUser');
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as User;
+      if (!parsed || parsed.role !== 'admin' || !parsed.id) return null;
+      return parsed;
+    } catch {
+      return null;
+    }
+  };
+
   useEffect(() => {
     let isMounted = true;
     const loadingGuard = setTimeout(() => {
@@ -61,6 +73,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }, 6000);
 
     if (!hasSupabaseConfig) {
+      const storedAdmin = getStoredAdminUser();
+      if (storedAdmin) {
+        setUser(storedAdmin);
+      }
       setLoading(false);
       return () => {
         isMounted = false;
@@ -118,6 +134,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           }
           
           setUser(dbUser);
+        } else {
+          const storedAdmin = getStoredAdminUser();
+          if (storedAdmin) {
+            setUser(storedAdmin);
+          }
         }
       } catch (error) {
         console.error('Failed to initialize auth session:', error);
@@ -171,7 +192,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           
           setUser(dbUser);
         } else {
-          setUser(null);
+          const storedAdmin = getStoredAdminUser();
+          setUser(storedAdmin || null);
         }
       } catch (error) {
         console.error('Failed to sync auth state:', error);
@@ -288,6 +310,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         
         console.log('Admin login successful:', adminUser);
         setUser(adminUser);
+        try {
+          localStorage.setItem('adminUser', JSON.stringify(adminUser));
+        } catch {
+          // Ignore storage errors; session will still be active in memory.
+        }
         return { success: true };
         
       } catch (fetchErr) {
