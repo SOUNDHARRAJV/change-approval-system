@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { supabase, hasSupabaseConfig } from '../lib/supabase';
 import { User, getUserByEmail, getUserById, upsertOAuthUser } from '../lib/data';
 
@@ -21,6 +21,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState('');
+  const lastAuthErrorRef = useRef<{ message: string; timestamp: number }>({ message: '', timestamp: 0 });
 
   const reviewerAllowlist = ['soundharraj122005@gmail.com'];
 
@@ -64,6 +65,16 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   };
 
+  const setAuthErrorOnce = (message: string) => {
+    const now = Date.now();
+    const { message: lastMessage, timestamp } = lastAuthErrorRef.current;
+    if (lastMessage === message && now - timestamp < 5000) {
+      return;
+    }
+    lastAuthErrorRef.current = { message, timestamp: now };
+    setAuthError(message);
+  };
+
   useEffect(() => {
     let isMounted = true;
     const loadingGuard = setTimeout(() => {
@@ -95,7 +106,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (sessionUser?.email) {
           const derivedRole = deriveRoleFromEmail(sessionUser.email);
           if (!derivedRole) {
-            setAuthError('Only bitsathy.ac.in emails are allowed.');
+            setAuthErrorOnce('Only bitsathy.ac.in emails are allowed.');
             await supabase.auth.signOut();
             setUser(null);
             return;
@@ -127,7 +138,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           
           // Check if user is active
           if (!dbUser.is_active) {
-            setAuthError('Your account has been disabled. Please contact the administrator to restore access.');
+            setAuthErrorOnce(
+              'Your account has been disabled. Please contact the administrator to restore access. For help, email admin@changeapprovalsystem.ac.in.'
+            );
             await supabase.auth.signOut();
             setUser(null);
             return;
@@ -163,7 +176,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         if (sessionUser?.email) {
           const derivedRole = deriveRoleFromEmail(sessionUser.email);
           if (!derivedRole) {
-            setAuthError('Only bitsathy.ac.in emails are allowed.');
+            setAuthErrorOnce('Only bitsathy.ac.in emails are allowed.');
             supabase.auth.signOut();
             setUser(null);
             return;
@@ -184,7 +197,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           
           // Check if user is active
           if (!dbUser.is_active) {
-            setAuthError('Your account has been disabled. Please contact the administrator to restore access.');
+            setAuthErrorOnce(
+              'Your account has been disabled. Please contact the administrator to restore access. For help, email admin@changeapprovalsystem.ac.in.'
+            );
             supabase.auth.signOut();
             setUser(null);
             return;
@@ -296,7 +311,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         const userData = users[0];
         
         if (!userData.is_active) {
-          return { success: false, error: 'Admin account is disabled.' };
+          return { success: false, error: 'Admin account is disabled. Contact admin@changeapprovalsystem.ac.in for access.' };
         }
 
         const adminUser: User = {
@@ -358,7 +373,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem('adminUser');
     supabase.auth.signOut();
   };
-  const clearAuthError = () => setAuthError('');
+  const clearAuthError = () => {
+    setAuthError('');
+    lastAuthErrorRef.current = { message: '', timestamp: 0 };
+  };
 
   return (
     <AuthContext.Provider value={{ user, loading, authError, loginAdmin, loginWithGoogle, logout, clearAuthError }}>
