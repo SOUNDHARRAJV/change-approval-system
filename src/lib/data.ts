@@ -31,6 +31,45 @@ export interface Comment {
   created_at: string;
 }
 
+const sanitizeFileName = (fileName: string): string => {
+  const normalized = fileName.normalize('NFKD').replace(/[^\x20-\x7E]/g, '');
+  const cleaned = normalized.replace(/[^A-Za-z0-9._-]+/g, '_').replace(/^_+|_+$/g, '');
+  return cleaned.slice(0, 120) || 'attachment';
+};
+
+export const uploadChangeRequestAttachment = async (
+  file: File
+): Promise<{ url: string; path: string } | null> => {
+  const bucketName = 'change-request-attachments';
+  const safeName = sanitizeFileName(file.name || 'attachment');
+  const { data: authData, error: authError } = await supabase.auth.getUser();
+  const authUserId = authData?.user?.id;
+
+  if (authError || !authUserId) {
+    console.error('No authenticated user for attachment upload.', authError);
+    return null;
+  }
+
+  const filePath = `${authUserId}/${Date.now()}_${safeName}`;
+
+  const { error } = await supabase.storage.from(bucketName).upload(filePath, file, {
+    upsert: false
+  });
+
+  if (error) {
+    console.error('Failed to upload attachment:', error);
+    return null;
+  }
+
+  const { data } = supabase.storage.from(bucketName).getPublicUrl(filePath);
+  if (!data?.publicUrl) {
+    console.error('Failed to get attachment URL.');
+    return null;
+  }
+
+  return { url: data.publicUrl, path: filePath };
+};
+
 export const getAllUsers = async (): Promise<User[]> => {
   try {
     const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
@@ -304,7 +343,8 @@ export const createChangeRequest = async (
   userId: string,
   title: string,
   description: string,
-  priority: string
+  priority: string,
+  attachmentUrl?: string | null
 ): Promise<ChangeRequest> => {
   const newRequest: ChangeRequest = {
     id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
@@ -313,6 +353,7 @@ export const createChangeRequest = async (
     description,
     priority: priority as ChangeRequest['priority'],
     status: 'pending',
+    attachment_url: attachmentUrl ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
   };

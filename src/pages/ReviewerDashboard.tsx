@@ -20,12 +20,20 @@ import {
 } from '../lib/data';
 import { notifyStatusUpdate } from '../lib/notifications';
 
+const getAttachmentPreviewType = (url: string) => {
+  const normalized = url.split('?')[0].toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)$/.test(normalized)) return 'image';
+  if (/\.pdf$/.test(normalized)) return 'pdf';
+  return 'other';
+};
+
 export const ReviewerDashboard = () => {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
   const [requests, setRequests] = useState<ChangeRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<ChangeRequest | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
   const [requestSubmitter, setRequestSubmitter] = useState<User | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [newComment, setNewComment] = useState('');
@@ -112,17 +120,22 @@ export const ReviewerDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:h-16 sm:py-0">
+            <div className="flex items-start gap-3 sm:items-center">
               <div className="p-2 bg-green-600 rounded-lg">
                 <UserCheck className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Reviewer Dashboard</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900">Reviewer Dashboard</h1>
                 <p className="text-sm text-gray-500">Review & approve change requests • Welcome, {user?.full_name}</p>
               </div>
             </div>
-            <Button variant="outline" onClick={logout} icon={<LogOut className="w-4 h-4" />}>
+            <Button
+              variant="outline"
+              onClick={logout}
+              icon={<LogOut className="w-4 h-4" />}
+              className="w-full sm:w-auto"
+            >
               Logout
             </Button>
           </div>
@@ -130,7 +143,7 @@ export const ReviewerDashboard = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-8">
           <Card className="hover:shadow-md transition-shadow">
             <CardBody>
               <div className="flex items-center justify-between">
@@ -190,12 +203,12 @@ export const ReviewerDashboard = () => {
 
         <Card>
           <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
               <div>
                 <h2 className="text-xl font-bold text-gray-900">Change Requests</h2>
                 <p className="text-sm text-gray-600 mt-1">Review and approve change requests</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Filter className="w-4 h-4 text-gray-500" />
                 <Select
                   value={filter}
@@ -207,7 +220,7 @@ export const ReviewerDashboard = () => {
                     { value: 'approved', label: 'Approved' },
                     { value: 'rejected', label: 'Rejected' }
                   ]}
-                  className="w-48"
+                  className="w-full sm:w-48"
                 />
               </div>
             </div>
@@ -231,15 +244,15 @@ export const ReviewerDashboard = () => {
                     key={request.id}
                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                   >
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-2">
                       <h3 className="font-semibold text-gray-900">{request.title}</h3>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <PriorityBadge priority={request.priority} />
                         <StatusBadge status={request.status} />
                       </div>
                     </div>
                     <p className="text-gray-600 text-sm mb-3">{request.description}</p>
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-xs text-gray-500">
                         Created: {new Date(request.created_at).toLocaleDateString()}
                       </div>
@@ -247,6 +260,7 @@ export const ReviewerDashboard = () => {
                         size="sm"
                         variant="primary"
                         onClick={() => handleViewRequest(request)}
+                        className="w-full sm:w-auto"
                       >
                         Review
                       </Button>
@@ -261,7 +275,10 @@ export const ReviewerDashboard = () => {
 
       <Modal
         isOpen={!!selectedRequest}
-        onClose={() => setSelectedRequest(null)}
+        onClose={() => {
+          setSelectedRequest(null);
+          setAttachmentPreviewUrl(null);
+        }}
         title="Review Change Request"
         size="xl"
       >
@@ -293,7 +310,7 @@ export const ReviewerDashboard = () => {
             <div className="mb-6 pt-6 border-t border-gray-200">
               <h4 className="font-semibold text-gray-900 mb-4">Approval Process Configuration</h4>
               <div className="bg-gray-50 rounded-lg p-4 space-y-4">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
                       Phase Name*
@@ -385,6 +402,18 @@ export const ReviewerDashboard = () => {
                 </div>
               </div>
               <p className="text-gray-700 mb-4">{selectedRequest.description}</p>
+              {selectedRequest.attachment_url && (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-2">Attachment</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAttachmentPreviewUrl(selectedRequest.attachment_url || null)}
+                  >
+                    View Attachment
+                  </Button>
+                </div>
+              )}
               <div className="text-sm text-gray-500">
                 Created: {new Date(selectedRequest.created_at).toLocaleString()}
               </div>
@@ -456,6 +485,45 @@ export const ReviewerDashboard = () => {
                 Under Review
               </Button>
             </div>
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        isOpen={!!attachmentPreviewUrl}
+        onClose={() => setAttachmentPreviewUrl(null)}
+        title="Attachment Preview"
+        size="xl"
+      >
+        {attachmentPreviewUrl && (
+          <div className="p-6">
+            {getAttachmentPreviewType(attachmentPreviewUrl) === 'image' && (
+              <img
+                src={attachmentPreviewUrl}
+                alt="Attachment preview"
+                className="max-h-[70vh] w-full object-contain rounded-lg border border-gray-200"
+              />
+            )}
+            {getAttachmentPreviewType(attachmentPreviewUrl) === 'pdf' && (
+              <iframe
+                title="Attachment preview"
+                src={attachmentPreviewUrl}
+                className="w-full h-[70vh] rounded-lg border border-gray-200"
+              />
+            )}
+            {getAttachmentPreviewType(attachmentPreviewUrl) === 'other' && (
+              <div className="text-sm text-gray-600">
+                <p className="mb-3">Preview is not available for this file type.</p>
+                <a
+                  href={attachmentPreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:text-blue-700 underline"
+                >
+                  Download attachment
+                </a>
+              </div>
+            )}
           </div>
         )}
       </Modal>

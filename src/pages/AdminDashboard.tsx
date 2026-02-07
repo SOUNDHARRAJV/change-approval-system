@@ -21,6 +21,13 @@ import {
 } from '../lib/data';
 import { notifyReviewerAssignment, notifyStatusUpdate } from '../lib/notifications';
 
+const getAttachmentPreviewType = (url: string) => {
+  const normalized = url.split('?')[0].toLowerCase();
+  if (/\.(png|jpe?g|gif|webp|bmp|svg)$/.test(normalized)) return 'image';
+  if (/\.pdf$/.test(normalized)) return 'pdf';
+  return 'other';
+};
+
 export const AdminDashboard = () => {
   const { user, logout } = useAuth();
   const { showToast } = useToast();
@@ -30,6 +37,7 @@ export const AdminDashboard = () => {
   const [regularUsers, setRegularUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<ChangeRequest | null>(null);
+  const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests');
   const [userTab, setUserTab] = useState<'admins' | 'reviewers' | 'users'>('admins');
@@ -164,17 +172,22 @@ export const AdminDashboard = () => {
     <div className="min-h-screen bg-gray-50">
       <nav className="bg-white border-b border-gray-200 shadow-sm">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center sm:justify-between sm:h-16 sm:py-0">
+            <div className="flex items-start gap-3 sm:items-center">
               <div className="p-2 bg-gray-800 rounded-lg">
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+                <h1 className="text-lg sm:text-xl font-bold text-gray-900">Admin Dashboard</h1>
                 <p className="text-sm text-gray-500">Full system management & oversight • Welcome, {user?.full_name}</p>
               </div>
             </div>
-            <Button variant="outline" onClick={logout} icon={<LogOut className="w-4 h-4" />}>
+            <Button
+              variant="outline"
+              onClick={logout}
+              icon={<LogOut className="w-4 h-4" />}
+              className="w-full sm:w-auto"
+            >
               Logout
             </Button>
           </div>
@@ -182,7 +195,7 @@ export const AdminDashboard = () => {
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-6 mb-8">
           <Card className="hover:shadow-md transition-shadow">
             <CardBody>
               <div className="flex items-center justify-between">
@@ -256,11 +269,11 @@ export const AdminDashboard = () => {
 
         <Card>
           <CardHeader>
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-gray-200">
-              <div className="flex">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between border-b border-gray-200">
+              <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setActiveTab('requests')}
-                  className={`px-6 py-3 font-medium transition-colors ${
+                  className={`px-4 py-2 sm:px-6 sm:py-3 font-medium transition-colors ${
                     activeTab === 'requests'
                       ? 'text-blue-600 border-b-2 border-blue-600'
                       : 'text-gray-600 hover:text-gray-900'
@@ -270,7 +283,7 @@ export const AdminDashboard = () => {
                 </button>
                 <button
                   onClick={() => setActiveTab('users')}
-                  className={`px-6 py-3 font-medium transition-colors ${
+                  className={`px-4 py-2 sm:px-6 sm:py-3 font-medium transition-colors ${
                     activeTab === 'users'
                       ? 'text-blue-600 border-b-2 border-blue-600'
                       : 'text-gray-600 hover:text-gray-900'
@@ -280,7 +293,7 @@ export const AdminDashboard = () => {
                 </button>
               </div>
               {activeTab === 'requests' && (
-                <div className="flex items-center gap-2 pr-2 py-3">
+                <div className="flex items-center gap-2 w-full sm:w-auto pr-0 sm:pr-2 py-1 sm:py-3">
                   <Filter className="w-4 h-4 text-gray-500" />
                   <Select
                     value={requestFilter}
@@ -292,7 +305,7 @@ export const AdminDashboard = () => {
                       { value: 'approved', label: 'Approved' },
                       { value: 'rejected', label: 'Rejected' }
                     ]}
-                    className="w-48"
+                    className="w-full sm:w-48"
                   />
                 </div>
               )}
@@ -312,15 +325,15 @@ export const AdminDashboard = () => {
                     key={request.id}
                     className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
                   >
-                    <div className="flex justify-between items-start mb-2">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-2">
                       <h3 className="font-semibold text-gray-900">{request.title}</h3>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
                         <PriorityBadge priority={request.priority} />
                         <StatusBadge status={request.status} />
                       </div>
                     </div>
                     <p className="text-gray-600 text-sm mb-3">{request.description}</p>
-                    <div className="flex justify-between items-center">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-xs text-gray-500">
                         Created: {new Date(request.created_at).toLocaleDateString()}
                         {request.reviewer_id && ' • Reviewer assigned'}
@@ -329,6 +342,7 @@ export const AdminDashboard = () => {
                         size="sm"
                         variant="primary"
                         onClick={() => setSelectedRequest(request)}
+                        className="w-full sm:w-auto"
                       >
                         Manage
                       </Button>
@@ -339,10 +353,10 @@ export const AdminDashboard = () => {
             ) : (
               <div className="space-y-4">
                 {/* User Management Tabs */}
-                <div className="flex gap-2 mb-6 border-b border-gray-200">
+                <div className="flex flex-wrap gap-2 mb-6 border-b border-gray-200">
                   <button
                     onClick={() => setUserTab('admins')}
-                    className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+                    className={`flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto px-4 py-2 sm:py-3 font-medium transition-colors ${
                       userTab === 'admins'
                         ? 'text-red-600 border-b-2 border-red-600'
                         : 'text-gray-600 hover:text-gray-900'
@@ -353,7 +367,7 @@ export const AdminDashboard = () => {
                   </button>
                   <button
                     onClick={() => setUserTab('reviewers')}
-                    className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+                    className={`flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto px-4 py-2 sm:py-3 font-medium transition-colors ${
                       userTab === 'reviewers'
                         ? 'text-green-600 border-b-2 border-green-600'
                         : 'text-gray-600 hover:text-gray-900'
@@ -364,7 +378,7 @@ export const AdminDashboard = () => {
                   </button>
                   <button
                     onClick={() => setUserTab('users')}
-                    className={`flex items-center gap-2 px-4 py-3 font-medium transition-colors ${
+                    className={`flex items-center justify-center sm:justify-start gap-2 w-full sm:w-auto px-4 py-2 sm:py-3 font-medium transition-colors ${
                       userTab === 'users'
                         ? 'text-blue-600 border-b-2 border-blue-600'
                         : 'text-gray-600 hover:text-gray-900'
@@ -386,7 +400,7 @@ export const AdminDashboard = () => {
                           key={u.id}
                           className="border border-red-200 bg-red-50 rounded-lg p-4 hover:shadow-md transition-shadow"
                         >
-                          <div className="flex justify-between items-center">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold text-gray-900">{u.full_name}</h3>
@@ -402,6 +416,7 @@ export const AdminDashboard = () => {
                               size="sm"
                               variant="secondary"
                               onClick={() => setSelectedUser(u)}
+                              className="w-full sm:w-auto"
                             >
                               Manage
                             </Button>
@@ -423,7 +438,7 @@ export const AdminDashboard = () => {
                           key={u.id}
                           className="border border-green-200 bg-green-50 rounded-lg p-4 hover:shadow-md transition-shadow"
                         >
-                          <div className="flex justify-between items-center">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold text-gray-900">{u.full_name}</h3>
@@ -439,6 +454,7 @@ export const AdminDashboard = () => {
                               size="sm"
                               variant="secondary"
                               onClick={() => setSelectedUser(u)}
+                              className="w-full sm:w-auto"
                             >
                               Manage
                             </Button>
@@ -460,7 +476,7 @@ export const AdminDashboard = () => {
                           key={u.id}
                           className="border border-blue-200 bg-blue-50 rounded-lg p-4 hover:shadow-md transition-shadow"
                         >
-                          <div className="flex justify-between items-center">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <div>
                               <div className="flex items-center gap-2 mb-1">
                                 <h3 className="font-semibold text-gray-900">{u.full_name}</h3>
@@ -476,6 +492,7 @@ export const AdminDashboard = () => {
                               size="sm"
                               variant="secondary"
                               onClick={() => setSelectedUser(u)}
+                              className="w-full sm:w-auto"
                             >
                               Manage
                             </Button>
@@ -493,21 +510,36 @@ export const AdminDashboard = () => {
 
       <Modal
         isOpen={!!selectedRequest}
-        onClose={() => setSelectedRequest(null)}
+        onClose={() => {
+          setSelectedRequest(null);
+          setAttachmentPreviewUrl(null);
+        }}
         title="Manage Change Request"
         size="lg"
       >
         {selectedRequest && (
           <div className="p-6">
             <div className="mb-6">
-              <div className="flex justify-between items-start mb-4">
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-4">
                 <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
-                <div className="flex gap-2">
+                <div className="flex flex-wrap gap-2">
                   <PriorityBadge priority={selectedRequest.priority} />
                   <StatusBadge status={selectedRequest.status} />
                 </div>
               </div>
               <p className="text-gray-700 mb-4">{selectedRequest.description}</p>
+              {selectedRequest.attachment_url && (
+                <div className="mb-4">
+                  <p className="text-sm text-gray-600 mb-2">Attachment</p>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAttachmentPreviewUrl(selectedRequest.attachment_url || null)}
+                  >
+                    View Attachment
+                  </Button>
+                </div>
+              )}
             </div>
 
             <div className="space-y-4">
@@ -552,6 +584,45 @@ export const AdminDashboard = () => {
       </Modal>
 
       <Modal
+        isOpen={!!attachmentPreviewUrl}
+        onClose={() => setAttachmentPreviewUrl(null)}
+        title="Attachment Preview"
+        size="xl"
+      >
+        {attachmentPreviewUrl && (
+          <div className="p-6">
+            {getAttachmentPreviewType(attachmentPreviewUrl) === 'image' && (
+              <img
+                src={attachmentPreviewUrl}
+                alt="Attachment preview"
+                className="max-h-[70vh] w-full object-contain rounded-lg border border-gray-200"
+              />
+            )}
+            {getAttachmentPreviewType(attachmentPreviewUrl) === 'pdf' && (
+              <iframe
+                title="Attachment preview"
+                src={attachmentPreviewUrl}
+                className="w-full h-[70vh] rounded-lg border border-gray-200"
+              />
+            )}
+            {getAttachmentPreviewType(attachmentPreviewUrl) === 'other' && (
+              <div className="text-sm text-gray-600">
+                <p className="mb-3">Preview is not available for this file type.</p>
+                <a
+                  href={attachmentPreviewUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-blue-600 hover:text-blue-700 underline"
+                >
+                  Download attachment
+                </a>
+              </div>
+            )}
+          </div>
+        )}
+      </Modal>
+
+      <Modal
         isOpen={!!selectedUser}
         onClose={() => setSelectedUser(null)}
         title="User Details & Management"
@@ -560,7 +631,7 @@ export const AdminDashboard = () => {
         {selectedUser && (
           <div className="p-6">
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <p className="text-sm text-gray-600">Name</p>
                   <p className="font-medium text-gray-900">{selectedUser.full_name}</p>
