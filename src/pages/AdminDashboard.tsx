@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Shield, LogOut, Users, FileText, UserCheck, Settings, Trash2, Lock, Filter } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Card, CardHeader, CardBody } from '../components/Card';
@@ -7,11 +7,11 @@ import { Select } from '../components/Input';
 import { StatusBadge, PriorityBadge, Badge } from '../components/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
+import { formatDate } from '../lib/date';
 import { 
   getAllChangeRequests,
   getAllUsers,
   toggleUserStatus,
-  assignReviewerToRequest,
   updateChangeRequestStatus,
   getChangeRequestById,
   deleteUser,
@@ -38,22 +38,116 @@ export const AdminDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [selectedRequest, setSelectedRequest] = useState<ChangeRequest | null>(null);
   const [attachmentPreviewUrl, setAttachmentPreviewUrl] = useState<string | null>(null);
+  const [selectedRequestDraft, setSelectedRequestDraft] = useState<{ reviewerId: string; status: string } | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'requests' | 'users'>('requests');
   const [userTab, setUserTab] = useState<'admins' | 'reviewers' | 'users'>('admins');
   const [requestFilter, setRequestFilter] = useState<string>('all');
   const [actionLoading, setActionLoading] = useState(false);
+  const [userSortOrder, setUserSortOrder] = useState<
+    'id-asc' | 'id-desc' | 'active' | 'disabled' | 'date-asc' | 'date-desc'
+  >('id-asc');
 
   useEffect(() => {
     loadData();
   }, []);
+
+  const casIdMap = useMemo(() => {
+    const map = new Map<string, string>();
+    const buildIds = (users: User[], prefix: string) => {
+      const sorted = [...users].sort(
+        (a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      );
+      sorted.forEach((userItem, index) => {
+        map.set(userItem.id, `${prefix}${String(index + 1).padStart(3, '0')}`);
+      });
+    };
+
+    buildIds(adminUsers, 'ADCAS');
+    buildIds(reviewerUsers, 'CASR');
+    buildIds(regularUsers, 'CAS');
+
+    return map;
+  }, [adminUsers, reviewerUsers, regularUsers]);
+
+  const userById = useMemo(() => {
+    const map = new Map<string, User>();
+    [...adminUsers, ...reviewerUsers, ...regularUsers].forEach((u) => map.set(u.id, u));
+    return map;
+  }, [adminUsers, reviewerUsers, regularUsers]);
+
+  const sortUsersByCasId = (users: User[]) => {
+    const sorted = [...users].sort((a, b) => {
+      switch (userSortOrder) {
+        case 'active':
+          return Number(b.is_active) - Number(a.is_active);
+        case 'disabled':
+          return Number(a.is_active) - Number(b.is_active);
+        case 'date-asc':
+          return new Date(a.created_at).getTime() - new Date(b.created_at).getTime();
+        case 'date-desc':
+          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'id-desc':
+        case 'id-asc':
+        default: {
+          const aId = casIdMap.get(a.id) || '';
+          const bId = casIdMap.get(b.id) || '';
+          return aId.localeCompare(bId, undefined, { numeric: true });
+        }
+      }
+    });
+
+    if (userSortOrder === 'id-desc') {
+      return sorted.reverse();
+    }
+
+    return sorted;
+  };
+
+  const handleExportUsers = () => {
+    const rows = [...adminUsers, ...reviewerUsers, ...regularUsers].map((u) => ({
+      casId: casIdMap.get(u.id) || '',
+      name: u.full_name,
+      email: u.email,
+      role: u.role,
+      status: u.is_active ? 'Active' : 'Inactive',
+      joined: formatDate(u.created_at)
+    }));
+
+    const header = ['CAS ID', 'Name', 'Email', 'Role', 'Status', 'Joined'];
+    const csv = [
+      header.join(','),
+      ...rows.map((row) =>
+        [row.casId, row.name, row.email, row.role, row.status, row.joined]
+          .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+          .join(',')
+      )
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'change-approval-users.csv';
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  useEffect(() => {
+    if (selectedRequest) {
+      setSelectedRequestDraft({
+        reviewerId: selectedRequest.reviewer_id ?? 'none',
+        status: selectedRequest.status
+      });
+    }
+  }, [selectedRequest]);
 
   const loadData = async () => {
     setLoading(true);
     try {
       const data = await Promise.race([
         Promise.all([getAllChangeRequests(), getAllUsers()]),
-        new Promise<null>((resolve) => setTimeout(() => resolve(null), 6000))
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 5000))
       ]);
 
       if (!data) {
@@ -78,36 +172,43 @@ export const AdminDashboard = () => {
     }
   };
 
-  const handleAssignReviewer = async (requestId: string, reviewerId: string) => {
+  const handleDoneRequestChanges = async () => {
+    if (!selectedRequest || !selectedRequestDraft) return;
+
+    const draftReviewerId = selectedRequestDraft.reviewerId === 'none'
+      ? null
+      : selectedRequestDraft.reviewerId;
+    const reviewerChanged = (selectedRequest.reviewer_id || 'none') !== (draftReviewerId || 'none');
+    const statusChanged = selectedRequest.status !== selectedRequestDraft.status;
+
+    if (!reviewerChanged && !statusChanged) {
+      setSelectedRequest(null);
+      setSelectedRequestDraft(null);
+      return;
+    }
+
     setActionLoading(true);
-    const request = await getChangeRequestById(requestId);
-    const updatedRequest = await assignReviewerToRequest(
-      requestId,
-      reviewerId === 'none' ? null : reviewerId
+    const updatedRequest = await updateChangeRequestStatus(
+      selectedRequest.id,
+      selectedRequestDraft.status,
+      draftReviewerId
     );
 
-    if (updatedRequest && reviewerId !== 'none' && request) {
-      await notifyReviewerAssignment(requestId, reviewerId, request.title);
+    if (updatedRequest) {
+      if (reviewerChanged && draftReviewerId) {
+        await notifyReviewerAssignment(selectedRequest.id, draftReviewerId, selectedRequest.title);
+      }
+      if (statusChanged) {
+        await notifyStatusUpdate(selectedRequest.user_id, selectedRequest.id, selectedRequest.title, selectedRequestDraft.status);
+      }
+      showToast('Request updated successfully', 'success');
+    } else {
+      showToast('Failed to update request', 'error');
     }
 
-    showToast('Reviewer assigned successfully', 'success');
     setActionLoading(false);
     setSelectedRequest(null);
-    loadData();
-  };
-
-  const handleUpdateRequestStatus = async (requestId: string, status: string) => {
-    setActionLoading(true);
-    const request = await getChangeRequestById(requestId);
-    const updatedRequest = await updateChangeRequestStatus(requestId, status);
-
-    if (updatedRequest && request) {
-      await notifyStatusUpdate(request.user_id, requestId, request.title, status);
-    }
-
-    showToast('Status updated successfully', 'success');
-    setActionLoading(false);
-    setSelectedRequest(null);
+    setSelectedRequestDraft(null);
     loadData();
   };
 
@@ -335,7 +436,10 @@ export const AdminDashboard = () => {
                     <p className="text-gray-600 text-sm mb-3">{request.description}</p>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-xs text-gray-500">
-                        Created: {new Date(request.created_at).toLocaleDateString()}
+                        Created: {formatDate(request.created_at)}
+                        {userById.get(request.user_id) && (
+                          <> • By {userById.get(request.user_id)?.full_name} ({casIdMap.get(request.user_id)})</>
+                        )}
                         {request.reviewer_id && ' • Reviewer assigned'}
                       </div>
                       <Button
@@ -392,10 +496,40 @@ export const AdminDashboard = () => {
                 {/* Admin Users Section */}
                 {userTab === 'admins' && (
                   <div className="space-y-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600">Sort by</label>
+                        <select
+                          value={userSortOrder}
+                          onChange={(e) =>
+                            setUserSortOrder(
+                              e.target.value as
+                                | 'id-asc'
+                                | 'id-desc'
+                                | 'active'
+                                | 'disabled'
+                                | 'date-asc'
+                                | 'date-desc'
+                            )
+                          }
+                          className="px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"
+                        >
+                          <option value="id-asc">ID ASC</option>
+                          <option value="id-desc">ID DESC</option>
+                          <option value="active">ACTIVE</option>
+                          <option value="disabled">DISABLED</option>
+                          <option value="date-asc">DATE ASC</option>
+                          <option value="date-desc">DATE DESC</option>
+                        </select>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={handleExportUsers}>
+                        Export Users
+                      </Button>
+                    </div>
                     {adminUsers.length === 0 ? (
                       <p className="text-gray-500 text-center py-8">No admin users</p>
                     ) : (
-                      adminUsers.map((u) => (
+                      sortUsersByCasId(adminUsers).map((u) => (
                         <div
                           key={u.id}
                           className="border border-red-200 bg-red-50 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -408,8 +542,9 @@ export const AdminDashboard = () => {
                                 {!u.is_active && <Badge variant="danger">Disabled</Badge>}
                               </div>
                               <p className="text-sm text-gray-600">{u.email}</p>
+                              <p className="text-xs text-gray-500 mt-1">ID: {casIdMap.get(u.id)}</p>
                               <p className="text-xs text-gray-500 mt-1">
-                                Joined: {new Date(u.created_at).toLocaleDateString()}
+                                Joined: {formatDate(u.created_at)}
                               </p>
                             </div>
                             <Button
@@ -430,10 +565,40 @@ export const AdminDashboard = () => {
                 {/* Reviewer Users Section */}
                 {userTab === 'reviewers' && (
                   <div className="space-y-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600">Sort by</label>
+                        <select
+                          value={userSortOrder}
+                          onChange={(e) =>
+                            setUserSortOrder(
+                              e.target.value as
+                                | 'id-asc'
+                                | 'id-desc'
+                                | 'active'
+                                | 'disabled'
+                                | 'date-asc'
+                                | 'date-desc'
+                            )
+                          }
+                          className="px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"
+                        >
+                          <option value="id-asc">ID ASC</option>
+                          <option value="id-desc">ID DESC</option>
+                          <option value="active">ACTIVE</option>
+                          <option value="disabled">DISABLED</option>
+                          <option value="date-asc">DATE ASC</option>
+                          <option value="date-desc">DATE DESC</option>
+                        </select>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={handleExportUsers}>
+                        Export Users
+                      </Button>
+                    </div>
                     {reviewerUsers.length === 0 ? (
                       <p className="text-gray-500 text-center py-8">No reviewers</p>
                     ) : (
-                      reviewerUsers.map((u) => (
+                      sortUsersByCasId(reviewerUsers).map((u) => (
                         <div
                           key={u.id}
                           className="border border-green-200 bg-green-50 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -446,8 +611,9 @@ export const AdminDashboard = () => {
                                 {!u.is_active && <Badge variant="danger">Disabled</Badge>}
                               </div>
                               <p className="text-sm text-gray-600">{u.email}</p>
+                              <p className="text-xs text-gray-500 mt-1">ID: {casIdMap.get(u.id)}</p>
                               <p className="text-xs text-gray-500 mt-1">
-                                Joined: {new Date(u.created_at).toLocaleDateString()}
+                                Joined: {formatDate(u.created_at)}
                               </p>
                             </div>
                             <Button
@@ -468,10 +634,40 @@ export const AdminDashboard = () => {
                 {/* Regular Users Section */}
                 {userTab === 'users' && (
                   <div className="space-y-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div className="flex items-center gap-2">
+                        <label className="text-sm text-gray-600">Sort by</label>
+                        <select
+                          value={userSortOrder}
+                          onChange={(e) =>
+                            setUserSortOrder(
+                              e.target.value as
+                                | 'id-asc'
+                                | 'id-desc'
+                                | 'active'
+                                | 'disabled'
+                                | 'date-asc'
+                                | 'date-desc'
+                            )
+                          }
+                          className="px-3 py-2 border border-gray-300 rounded-md shadow-sm text-sm"
+                        >
+                          <option value="id-asc">ID ASC</option>
+                          <option value="id-desc">ID DESC</option>
+                          <option value="active">ACTIVE</option>
+                          <option value="disabled">DISABLED</option>
+                          <option value="date-asc">DATE ASC</option>
+                          <option value="date-desc">DATE DESC</option>
+                        </select>
+                      </div>
+                      <Button variant="outline" size="sm" onClick={handleExportUsers}>
+                        Export Users
+                      </Button>
+                    </div>
                     {regularUsers.length === 0 ? (
                       <p className="text-gray-500 text-center py-8">No regular users</p>
                     ) : (
-                      regularUsers.map((u) => (
+                      sortUsersByCasId(regularUsers).map((u) => (
                         <div
                           key={u.id}
                           className="border border-blue-200 bg-blue-50 rounded-lg p-4 hover:shadow-md transition-shadow"
@@ -484,8 +680,9 @@ export const AdminDashboard = () => {
                                 {!u.is_active && <Badge variant="danger">Disabled</Badge>}
                               </div>
                               <p className="text-sm text-gray-600">{u.email}</p>
+                              <p className="text-xs text-gray-500 mt-1">ID: {casIdMap.get(u.id)}</p>
                               <p className="text-xs text-gray-500 mt-1">
-                                Joined: {new Date(u.created_at).toLocaleDateString()}
+                                Joined: {formatDate(u.created_at)}
                               </p>
                             </div>
                             <Button
@@ -513,6 +710,7 @@ export const AdminDashboard = () => {
         onClose={() => {
           setSelectedRequest(null);
           setAttachmentPreviewUrl(null);
+          setSelectedRequestDraft(null);
         }}
         title="Manage Change Request"
         size="lg"
@@ -524,10 +722,17 @@ export const AdminDashboard = () => {
                 <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
                 <div className="flex flex-wrap gap-2">
                   <PriorityBadge priority={selectedRequest.priority} />
-                  <StatusBadge status={selectedRequest.status} />
+                  <StatusBadge status={selectedRequestDraft?.status || selectedRequest.status} />
                 </div>
               </div>
               <p className="text-gray-700 mb-4">{selectedRequest.description}</p>
+              <div className="text-sm text-gray-600 mb-4">
+                Created by:{' '}
+                {userById.get(selectedRequest.user_id)?.full_name || 'Unknown'}{' '}
+                {casIdMap.get(selectedRequest.user_id) ? `(${casIdMap.get(selectedRequest.user_id)})` : ''}
+                {' • '}
+                {formatDate(selectedRequest.created_at)}
+              </div>
               {selectedRequest.attachment_url && (
                 <div className="mb-4">
                   <p className="text-sm text-gray-600 mb-2">Attachment</p>
@@ -545,8 +750,13 @@ export const AdminDashboard = () => {
             <div className="space-y-4">
               <Select
                 label="Assign Reviewer"
-                value={selectedRequest.reviewer_id || 'none'}
-                onChange={(e) => handleAssignReviewer(selectedRequest.id, e.target.value)}
+                value={selectedRequestDraft?.reviewerId ?? selectedRequest.reviewer_id ?? 'none'}
+                onChange={(e) =>
+                  setSelectedRequestDraft({
+                    reviewerId: e.target.value,
+                    status: selectedRequestDraft?.status ?? selectedRequest.status
+                  })
+                }
                 options={[
                   { value: 'none', label: 'No Reviewer' },
                   ...reviewerUsers.map(r => ({ value: r.id, label: r.full_name }))
@@ -555,8 +765,13 @@ export const AdminDashboard = () => {
 
               <Select
                 label="Update Status"
-                value={selectedRequest.status}
-                onChange={(e) => handleUpdateRequestStatus(selectedRequest.id, e.target.value)}
+                value={selectedRequestDraft?.status ?? selectedRequest.status}
+                onChange={(e) =>
+                  setSelectedRequestDraft({
+                    reviewerId: selectedRequestDraft?.reviewerId ?? selectedRequest.reviewer_id ?? 'none',
+                    status: e.target.value
+                  })
+                }
                 options={[
                   { value: 'pending', label: 'Pending' },
                   { value: 'under_review', label: 'Under Review' },
@@ -566,7 +781,7 @@ export const AdminDashboard = () => {
               />
             </div>
 
-            <div className="mt-6 flex justify-end gap-3">
+            <div className="mt-6 flex items-center justify-between gap-3">
               <Button 
                 variant="danger" 
                 icon={<Trash2 className="w-4 h-4" />}
@@ -575,9 +790,18 @@ export const AdminDashboard = () => {
               >
                 Delete
               </Button>
-              <Button variant="outline" onClick={() => setSelectedRequest(null)}>
-                Close
-              </Button>
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={() => setSelectedRequest(null)}>
+                  Close
+                </Button>
+                <Button
+                  variant="primary"
+                  onClick={handleDoneRequestChanges}
+                  loading={actionLoading}
+                >
+                  Done
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -632,6 +856,10 @@ export const AdminDashboard = () => {
           <div className="p-6">
             <div className="bg-gray-50 rounded-lg p-4 mb-6">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <p className="text-sm text-gray-600">User ID</p>
+                  <p className="font-medium text-gray-900">{casIdMap.get(selectedUser.id) || '—'}</p>
+                </div>
                 <div>
                   <p className="text-sm text-gray-600">Name</p>
                   <p className="font-medium text-gray-900">{selectedUser.full_name}</p>

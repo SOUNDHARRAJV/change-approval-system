@@ -7,6 +7,7 @@ import { Select, Textarea } from '../components/Input';
 import { StatusBadge, PriorityBadge, Badge } from '../components/Badge';
 import { useAuth } from '../contexts/AuthContext';
 import { useToast } from '../components/Toast';
+import { formatDate } from '../lib/date';
 import { 
   getAllChangeRequests,
   getCommentsByRequestId,
@@ -54,9 +55,19 @@ export const ReviewerDashboard = () => {
 
   const loadRequests = async () => {
     setLoading(true);
-    const allRequests = await getAllChangeRequests();
-    setRequests(allRequests);
-    setLoading(false);
+    try {
+      const allRequests = await Promise.race([
+        getAllChangeRequests(),
+        new Promise<ChangeRequest[]>((_, reject) =>
+          setTimeout(() => reject(new Error('timeout')), 5000)
+        )
+      ]);
+      setRequests(allRequests);
+    } catch {
+      showToast('Loading timed out. Please try again.', 'error');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const loadComments = async (requestId: string) => {
@@ -254,7 +265,7 @@ export const ReviewerDashboard = () => {
                     <p className="text-gray-600 text-sm mb-3">{request.description}</p>
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="text-xs text-gray-500">
-                        Created: {new Date(request.created_at).toLocaleDateString()}
+                        Created: {formatDate(request.created_at)}
                       </div>
                       <Button
                         size="sm"
@@ -415,7 +426,7 @@ export const ReviewerDashboard = () => {
                 </div>
               )}
               <div className="text-sm text-gray-500">
-                Created: {new Date(selectedRequest.created_at).toLocaleString()}
+                Created: {formatDate(selectedRequest.created_at)}
               </div>
             </div>
 
@@ -432,7 +443,7 @@ export const ReviewerDashboard = () => {
                     <div key={comment.id} className="bg-gray-50 rounded-lg p-3">
                       <p className="text-gray-700">{comment.comment}</p>
                       <p className="text-xs text-gray-500 mt-2">
-                        {new Date(comment.created_at).toLocaleString()}
+                        {formatDate(comment.created_at)}
                       </p>
                     </div>
                   ))

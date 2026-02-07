@@ -344,15 +344,17 @@ export const createChangeRequest = async (
   title: string,
   description: string,
   priority: string,
-  attachmentUrl?: string | null
+  attachmentUrl?: string | null,
+  reviewerId?: string | null
 ): Promise<ChangeRequest> => {
   const newRequest: ChangeRequest = {
     id: `req_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
     user_id: userId,
+    reviewer_id: reviewerId ?? null,
     title,
     description,
     priority: priority as ChangeRequest['priority'],
-    status: 'pending',
+    status: reviewerId ? 'under_review' : 'pending',
     attachment_url: attachmentUrl ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString()
@@ -363,6 +365,45 @@ export const createChangeRequest = async (
     console.error('Failed to create change request:', error);
     return newRequest;
   }
+  return data as ChangeRequest;
+};
+
+export const updateChangeRequest = async (
+  requestId: string,
+  updates: {
+    title: string;
+    description: string;
+    priority: ChangeRequest['priority'];
+    attachmentUrl?: string | null;
+    reviewerId?: string | null;
+    status?: ChangeRequest['status'];
+  }
+): Promise<ChangeRequest | null> => {
+  const payload: Partial<ChangeRequest> = {
+    title: updates.title,
+    description: updates.description,
+    priority: updates.priority,
+    attachment_url: updates.attachmentUrl ?? null,
+    reviewer_id: updates.reviewerId ?? null,
+    updated_at: new Date().toISOString()
+  };
+
+  if (updates.status !== undefined) {
+    payload.status = updates.status;
+  }
+
+  const { data, error } = await supabase
+    .from('change_requests')
+    .update(payload)
+    .eq('id', requestId)
+    .select('*')
+    .single();
+
+  if (error) {
+    console.error('Failed to update change request:', error);
+    return null;
+  }
+
   return data as ChangeRequest;
 };
 
@@ -511,13 +552,13 @@ export const getChangeRequestById = async (requestId: string): Promise<ChangeReq
 export const updateChangeRequestStatus = async (
   requestId: string,
   status: string,
-  reviewerId?: string
+  reviewerId?: string | null
 ): Promise<ChangeRequest | null> => {
   const updates: Partial<ChangeRequest> = {
     status: status as ChangeRequest['status'],
     updated_at: new Date().toISOString()
   };
-  if (reviewerId) {
+  if (reviewerId !== undefined) {
     updates.reviewer_id = reviewerId;
   }
 
