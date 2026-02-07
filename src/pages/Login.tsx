@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Shield } from 'lucide-react';
 import { Button } from '../components/Button';
 import { Input } from '../components/Input';
+import { Modal } from '../components/Modal';
 import { useAuth } from '../contexts/AuthContext';
 import { checkSupabaseConnection } from '../lib/supabase';
 import { useToast } from '../components/Toast';
@@ -12,16 +13,16 @@ export const Login = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [connectionError, setConnectionError] = useState('');
+  const [authModalMessage, setAuthModalMessage] = useState('');
   const { authError, clearAuthError, loginAdmin, loginWithGoogle } = useAuth();
   const { showToast } = useToast();
 
   useEffect(() => {
     if (authError) {
-      setError(authError);
-      showToast(authError, 'error');
+      setAuthModalMessage(authError);
       clearAuthError();
     }
-  }, [authError, clearAuthError, showToast]);
+  }, [authError, clearAuthError]);
 
   useEffect(() => {
     let isActive = true;
@@ -163,6 +164,27 @@ export const Login = () => {
           </form>
         </div>
       </div>
+
+      <Modal
+        isOpen={!!authModalMessage}
+        onClose={() => setAuthModalMessage('')}
+        title="Account Access Restricted"
+        size="sm"
+      >
+        <div className="p-6">
+          <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-800 leading-relaxed text-center">
+            <p>Your account has been disabled. Please contact the administrator to restore access.</p>
+            <p className="mt-2">
+              For help, email <span className="font-semibold text-red-700">admin@changeapprovalsystem.ac.in</span>.
+            </p>
+          </div>
+          <div className="mt-6 flex justify-end">
+            <Button variant="primary" onClick={() => setAuthModalMessage('')}>
+              Okay
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
