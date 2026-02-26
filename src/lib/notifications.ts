@@ -17,7 +17,7 @@ export const ensureNotificationsTable = async () => {
   try {
     // This would typically be done via migrations, but included for completeness
     const { error } = await supabase.from('notifications').select('count').limit(1);
-    
+
     // If table doesn't exist, the error will indicate it
     if (error && error.message.includes('does not exist')) {
       console.log('Notifications table needs to be created via migration');
@@ -162,7 +162,7 @@ export const getUserNotifications = async (userId: string): Promise<Notification
 // Get unread notification count
 export const getUnreadNotificationCount = async (userId: string): Promise<number> => {
   try {
-    const { data, error, count } = await supabase
+    const { error, count } = await supabase
       .from('notifications')
       .select('id', { count: 'exact', head: true })
       .eq('user_id', userId)

@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect, ReactNode, useRef } from 'react';
 import { supabase, hasSupabaseConfig } from '../lib/supabase';
-import { User, getUserByEmail, getUserById, upsertOAuthUser } from '../lib/data';
+import { User, getUserByEmail, upsertOAuthUser } from '../lib/data';
 
 interface AuthContextType {
   user: User | null;
@@ -99,7 +99,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       try {
         const { data } = await withTimeout(
           supabase.auth.getSession(),
-          4000,
+          10000,
           { data: { session: null } } as Awaited<ReturnType<typeof supabase.auth.getSession>>
         );
         const sessionUser = data.session?.user;
@@ -111,7 +111,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             return;
           }
-          const existing = await withTimeout(getUserByEmail(sessionUser.email), 4000, null);
+          const existing = await withTimeout(getUserByEmail(sessionUser.email), 10000, null);
           const normalizedEmail = sessionUser.email.toLowerCase();
           let role = existing?.role || derivedRole;
           if (existing?.role === 'admin') {
@@ -125,7 +125,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             sessionUser.email.split('@')[0];
           const dbUser = await withTimeout(
             upsertOAuthUser(sessionUser.email, fullName, role, sessionUser.id),
-            4000,
+            10000,
             {
               id: sessionUser.id,
               email: sessionUser.email,
@@ -135,7 +135,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
               created_at: new Date().toISOString()
             }
           );
-          
+
           // Check if user is active
           if (!dbUser.is_active) {
             setAuthErrorOnce(
@@ -145,7 +145,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             return;
           }
-          
+
           setUser(dbUser);
         } else {
           const storedAdmin = getStoredAdminUser();
@@ -194,7 +194,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             sessionUser.user_metadata?.name ||
             sessionUser.email.split('@')[0];
           const dbUser = await upsertOAuthUser(sessionUser.email, fullName, role, sessionUser.id);
-          
+
           // Check if user is active
           if (!dbUser.is_active) {
             setAuthErrorOnce(
@@ -204,7 +204,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             setUser(null);
             return;
           }
-          
+
           setUser(dbUser);
         } else {
           const storedAdmin = getStoredAdminUser();
@@ -234,18 +234,18 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
       const normalizedUser = username.trim().toLowerCase();
       console.log('Starting admin login for:', normalizedUser);
-      
+
       // Get Supabase URL and key from the client
       const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
       const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
-      
+
       // Direct REST API call to bypass hanging Supabase client
       console.log('Calling Supabase REST API directly...');
-      
+
       try {
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000);
-        
+        const timeoutId = setTimeout(() => controller.abort(), 15000);
+
         const response = await fetch(
           `${supabaseUrl}/rest/v1/admin_credentials?username=eq.${encodeURIComponent(normalizedUser)}&password=eq.${encodeURIComponent(password)}&select=user_id`,
           {
@@ -259,29 +259,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             signal: controller.signal
           }
         );
-        
+
         clearTimeout(timeoutId);
         console.log('REST API response status:', response.status);
-        
+
         if (!response.ok) {
           const errorText = await response.text();
           console.error('REST API error:', errorText);
           return { success: false, error: `API Error: ${response.statusText}` };
         }
-        
+
         const credentials = await response.json();
         console.log('Credentials result:', credentials);
-        
+
         if (!credentials || credentials.length === 0) {
           return { success: false, error: 'Invalid admin credentials.' };
         }
-        
+
         const userId = credentials[0].user_id;
-        
+
         // Fetch user
         const userController = new AbortController();
-        const userTimeoutId = setTimeout(() => userController.abort(), 5000);
-        
+        const userTimeoutId = setTimeout(() => userController.abort(), 15000);
+
         const userResponse = await fetch(
           `${supabaseUrl}/rest/v1/users?id=eq.${encodeURIComponent(userId)}&select=*`,
           {
@@ -294,22 +294,22 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             signal: userController.signal
           }
         );
-        
+
         clearTimeout(userTimeoutId);
-        
+
         if (!userResponse.ok) {
           return { success: false, error: 'Failed to fetch user profile.' };
         }
-        
+
         const users = await userResponse.json();
         console.log('User result:', users);
-        
+
         if (!users || users.length === 0) {
           return { success: false, error: 'Admin profile not found.' };
         }
-        
+
         const userData = users[0];
-        
+
         if (!userData.is_active) {
           return { success: false, error: 'Admin account is disabled. Contact admin@changeapprovalsystem.ac.in for access.' };
         }
@@ -322,7 +322,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           is_active: userData.is_active,
           created_at: userData.created_at
         };
-        
+
         console.log('Admin login successful:', adminUser);
         setUser(adminUser);
         try {
@@ -331,7 +331,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           // Ignore storage errors; session will still be active in memory.
         }
         return { success: true };
-        
+
       } catch (fetchErr) {
         console.error('Fetch error:', fetchErr);
         if (fetchErr instanceof Error && fetchErr.name === 'AbortError') {
@@ -339,7 +339,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         }
         return { success: false, error: fetchErr instanceof Error ? fetchErr.message : 'Network error' };
       }
-      
+
     } catch (err) {
       console.error('Login exception:', err);
       return { success: false, error: err instanceof Error ? err.message : 'Login failed. Please try again.' };

@@ -1,17 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL ?? '';
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY ?? '';
+const supabaseUrl = import.meta.env.VITE_SUPABASE_URL?.trim() ?? '';
+const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY?.trim() ?? '';
 
-console.log('Supabase config loaded:', { 
-  url: supabaseUrl, 
+const fallbackSupabaseUrl = 'http://localhost:54321';
+const fallbackSupabaseAnonKey = 'missing-supabase-anon-key';
+
+console.log('Supabase config loaded:', {
+  url: supabaseUrl,
   hasKey: !!supabaseAnonKey,
-  keyLength: supabaseAnonKey?.length 
+  keyLength: supabaseAnonKey?.length
 });
 
 export const hasSupabaseConfig = Boolean(supabaseUrl && supabaseAnonKey);
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+export const supabase = createClient(
+  hasSupabaseConfig ? supabaseUrl : fallbackSupabaseUrl,
+  hasSupabaseConfig ? supabaseAnonKey : fallbackSupabaseAnonKey
+);
 
 export const checkSupabaseConnection = async (): Promise<{ ok: boolean; message?: string }> => {
   if (!hasSupabaseConfig) {
@@ -19,7 +25,7 @@ export const checkSupabaseConnection = async (): Promise<{ ok: boolean; message?
   }
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 5000);
+  const timeout = setTimeout(() => controller.abort(), 12000);
 
   try {
     const response = await fetch(`${supabaseUrl}/rest/v1/`, {

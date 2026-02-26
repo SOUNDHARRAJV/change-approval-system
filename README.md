@@ -218,6 +218,17 @@ src/
 
 ## Development
 
+### Configure Environment Variables
+Create a local `.env` file from `.env.example` and set your Supabase project values:
+
+```bash
+cp .env.example .env
+```
+
+Required variables:
+- `VITE_SUPABASE_URL`
+- `VITE_SUPABASE_ANON_KEY`
+
 ### Install Dependencies
 ```bash
 npm install
