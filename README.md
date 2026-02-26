@@ -2,19 +2,21 @@
 
 A comprehensive change management system with role-based access control for submitting, reviewing, and approving change requests.
 
-## Project Resources & Validation
+---
 
-## Live Demo:
-[https://yourproject.netlify.app](https://changeapprovalsystem.netlify.app/)
+## 🔗 Project Resources & Validation
 
-##💻 Source Code:
-[https://github.com/SOUNDHARRAJV/change-approval-system](https://github.com/SOUNDHARRAJV/change-approval-system)
+### 🌐 Live Demo  
+[Change Approval System – Live Deployment](https://changeapprovalsystem.netlify.app/)
 
-##📄 Phase 1 Review Report:
-[https://your-review-link-1.com](https://changeapproval-review-01.onrender.com/)
+### 💻 Source Code  
+[GitHub Repository](https://github.com/SOUNDHARRAJV/change-approval-system)
 
-##📄 Phase 2 Review Report:
-Yet to be Added..
+### 📄 Phase 1 Review Report  
+[View Phase 1 Evaluation](https://changeapproval-review-01.onrender.com/)
+
+### 📄 Phase 2 Review Report  
+To be added after completion of Phase 2 review.
 ## Overview
 
 The Change Approval System is a full-featured frontend application built with React, TypeScript, and Tailwind CSS. It provides a seamless workflow for managing change requests across three user roles: User, Reviewer, and Admin.
