@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { UserCheck, LogOut, Filter, MessageSquare, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { UserCheck, LogOut, Filter, MessageSquare, CheckCircle, XCircle, Clock, Paperclip } from 'lucide-react';
 import { Button } from '../../../shared/components/Button';
 import { Card, CardHeader, CardBody } from '../../../shared/components/Card';
 import { Modal } from '../../../shared/components/Modal';
@@ -29,6 +29,9 @@ export const ReviewerDashboard = () => {
     const [requestSubmitter, setRequestSubmitter] = useState<User | null>(null);
     const [comments, setComments] = useState<Comment[]>([]);
     const [newComment, setNewComment] = useState('');
+    const [commentLoading, setCommentLoading] = useState(false);
+    const [rejectionReason, setRejectionReason] = useState('');
+    const [showRejectionReason, setShowRejectionReason] = useState(false);
     const [filter, setFilter] = useState<string>('all');
     const [actionLoading, setActionLoading] = useState(false);
     const [approvalConfig, setApprovalConfig] = useState({
@@ -66,8 +69,58 @@ export const ReviewerDashboard = () => {
         setComments(comments);
     };
 
+    const formatHeaderDate = (value: string) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Unknown date';
+        return new Intl.DateTimeFormat('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        }).format(date);
+    };
+
+    const formatRelativeTime = (value: string) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const diffMs = Date.now() - date.getTime();
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        if (diffMinutes < 1) return 'just now';
+        if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+        const diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    };
+
+    const getRequestDisplayId = (request: ChangeRequest) => {
+        const year = new Date(request.created_at).getFullYear();
+        const idPart = request.id?.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+        if (!idPart) return 'CR-XXXX';
+        return `CR-${Number.isNaN(year) ? 'XXXX' : year}-${idPart}`;
+    };
+
+    const getAttachmentFileName = (url?: string | null) => {
+        if (!url) return 'Attached file';
+        const cleanUrl = url.split('?')[0];
+        const raw = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
+        if (!raw) return 'Attached file';
+        try {
+            return decodeURIComponent(raw);
+        } catch {
+            return raw;
+        }
+    };
+
+    const autoExpandTextarea = (element: HTMLTextAreaElement) => {
+        element.style.height = 'auto';
+        element.style.height = `${element.scrollHeight}px`;
+    };
+
     const handleViewRequest = async (request: ChangeRequest) => {
         setSelectedRequest(request);
+        setRejectionReason('');
+        setShowRejectionReason(false);
+        setNewComment('');
         const submitter = await getUserById(request.user_id);
         setRequestSubmitter(submitter || null);
         loadComments(request.id);
@@ -97,6 +150,7 @@ export const ReviewerDashboard = () => {
     const handleAddComment = async () => {
         if (!selectedRequest || !user || !newComment.trim()) return;
 
+        setCommentLoading(true);
         const created = await addComment(selectedRequest.id, user.id, newComment);
         if (created) {
             showToast('Comment added successfully', 'success');
@@ -105,6 +159,22 @@ export const ReviewerDashboard = () => {
         } else {
             showToast('Failed to add comment', 'error');
         }
+        setCommentLoading(false);
+    };
+
+    const handleDecision = async (status: 'approved' | 'rejected' | 'under_review') => {
+        if (status === 'rejected') {
+            if (!showRejectionReason) {
+                setShowRejectionReason(true);
+                return;
+            }
+            if (!rejectionReason.trim()) {
+                showToast('Reason for rejection is required.', 'error');
+                return;
+            }
+        }
+
+        await handleUpdateStatus(status);
     };
 
     const filteredRequests = filter === 'all'
@@ -280,90 +350,138 @@ export const ReviewerDashboard = () => {
                 onClose={() => {
                     setSelectedRequest(null);
                     setAttachmentPreviewUrl(null);
+                    setRequestSubmitter(null);
+                    setComments([]);
+                    setNewComment('');
+                    setRejectionReason('');
+                    setShowRejectionReason(false);
                     void setApprovalConfig;
                 }}
                 title="Review Change Request"
                 size="xl"
             >
                 {selectedRequest && (
-                    <div className="mx-auto w-full max-w-3xl rounded-xl bg-white shadow-xl p-6" data-review-phase={approvalConfig.phaseName}>
-                        <div className="space-y-6">
-                            <div className="space-y-2 border-b border-gray-100 pb-4">
-                                <h3 className="text-2xl font-semibold text-gray-900">{selectedRequest.title}</h3>
+                    <div className="p-6 space-y-5" data-review-phase={approvalConfig.phaseName}>
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-start">
+                                <div className="space-y-1 min-w-0">
+                                    <h3 className="text-2xl font-bold text-gray-900 leading-tight break-words">{selectedRequest.title}</h3>
+                                    <p className="text-sm font-medium text-gray-500">{getRequestDisplayId(selectedRequest)}</p>
+                                </div>
                                 <div className="flex flex-wrap items-center gap-2">
                                     <PriorityBadge priority={selectedRequest.priority} />
                                     <StatusBadge status={selectedRequest.status} />
-                                    <span className="text-sm text-gray-500">Created: {formatDate(selectedRequest.created_at)}</span>
                                 </div>
                             </div>
+                            <p className="mt-3 text-sm text-gray-600">
+                                Created: {formatHeaderDate(selectedRequest.created_at)}
+                                {' • '}
+                                {formatRelativeTime(selectedRequest.created_at)}
+                            </p>
+                        </div>
 
-                            {requestSubmitter && (
-                                <div>
-                                    <h4 className="mb-2 text-sm font-medium text-gray-900">Submitted by</h4>
-                                    <div className="bg-gray-50 rounded-lg px-4 py-3">
-                                        <div className="flex items-center gap-3">
-                                            <div className="h-9 w-9 rounded-full bg-white border border-gray-100 flex items-center justify-center text-sm font-medium text-gray-700">
-                                                {requestSubmitter.full_name
-                                                    .split(' ')
-                                                    .filter(Boolean)
-                                                    .slice(0, 2)
-                                                    .map((part) => part[0]?.toUpperCase())
-                                                    .join('')}
-                                            </div>
-                                            <div className="min-w-0 flex-1">
-                                                <p className="font-medium text-gray-900 truncate">{requestSubmitter.full_name}</p>
-                                                <p className="text-sm text-gray-500 truncate">{requestSubmitter.email}</p>
-                                            </div>
-                                            <Badge variant={requestSubmitter.role === 'admin' ? 'danger' : requestSubmitter.role === 'reviewer' ? 'success' : 'info'}>
-                                                {requestSubmitter.role}
-                                            </Badge>
-                                        </div>
+                        {requestSubmitter && (
+                            <div className="rounded-2xl border border-gray-200 bg-gray-50/70 p-5 shadow-sm">
+                                <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide pb-3 border-b border-gray-200">Submitted By</h4>
+                                <div className="mt-4 flex items-center gap-3">
+                                    <div className="h-11 w-11 rounded-full bg-white border border-gray-200 flex items-center justify-center text-sm font-semibold text-gray-700">
+                                        {requestSubmitter.full_name
+                                            .split(' ')
+                                            .filter(Boolean)
+                                            .slice(0, 2)
+                                            .map((part) => part[0]?.toUpperCase())
+                                            .join('')}
                                     </div>
-                                </div>
-                            )}
-
-                            <div>
-                                <h4 className="mb-2 text-sm font-medium text-gray-900">Description</h4>
-                                <div className="bg-white border border-gray-100 rounded-lg p-4">
-                                    <p className="text-gray-700 leading-relaxed">{selectedRequest.description}</p>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="font-semibold text-gray-900 truncate">{requestSubmitter.full_name}</p>
+                                        <p className="text-sm text-gray-500 truncate">{requestSubmitter.email}</p>
+                                    </div>
+                                    <Badge variant={requestSubmitter.role === 'admin' ? 'danger' : requestSubmitter.role === 'reviewer' ? 'success' : 'info'}>
+                                        {requestSubmitter.role}
+                                    </Badge>
                                 </div>
                             </div>
+                        )}
 
-                            {selectedRequest.attachment_url && (
-                                <div>
-                                    <h4 className="mb-2 text-sm font-medium text-gray-900">Attachment</h4>
-                                    <div className="bg-gray-50 rounded-lg px-4 py-3 flex items-center justify-between gap-3">
-                                        <p className="text-sm text-gray-500">Review uploaded file before deciding.</p>
-                                        <Button
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => setAttachmentPreviewUrl(selectedRequest.attachment_url || null)}
-                                        >
-                                            View Attachment
-                                        </Button>
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide pb-3 border-b border-gray-200">Request Description</h4>
+                            <div className="max-h-48 overflow-y-auto rounded-xl border border-gray-100 bg-gray-50 p-4">
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedRequest.description || 'No description provided.'}</p>
+                            </div>
+                        </div>
+
+                        {selectedRequest.attachment_url && (
+                            <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+                                <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide pb-3 border-b border-gray-200">Attachment</h4>
+                                <div className="rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <Paperclip className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                                        <p className="text-sm text-gray-600 truncate">{getAttachmentFileName(selectedRequest.attachment_url)}</p>
                                     </div>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => setAttachmentPreviewUrl(selectedRequest.attachment_url || null)}
+                                    >
+                                        View Attachment
+                                    </Button>
                                 </div>
-                            )}
+                            </div>
+                        )}
 
-                            <div>
-                                <h4 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-                                    <MessageSquare className="w-5 h-5" />
-                                    Comments
-                                </h4>
-                                <div className="bg-gray-50 rounded-lg p-3 max-h-64 overflow-y-auto space-y-3">
-                                    {comments.length === 0 ? (
-                                        <p className="text-sm text-gray-500">No comments yet</p>
-                                    ) : (
-                                        comments.map((comment) => (
-                                            <div key={comment.id} className="bg-white border border-gray-100 rounded-lg p-3">
-                                                <p className="text-gray-700">{comment.comment}</p>
-                                                <p className="text-xs text-gray-500 mt-2">
-                                                    {formatDate(comment.created_at)}
-                                                </p>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide pb-3 border-b border-gray-200 flex items-center gap-2">
+                                <MessageSquare className="w-4 h-4" />
+                                Comments
+                            </h4>
+
+                            <div className="rounded-xl border border-gray-200 bg-gray-50 p-3 max-h-64 overflow-y-auto">
+                                {comments.length === 0 ? (
+                                    <p className="text-sm text-gray-500 text-center py-6">No comments have been added yet.</p>
+                                ) : (
+                                    <div className="divide-y divide-gray-200">
+                                        {comments.map((comment) => {
+                                            const isCurrentReviewer = comment.reviewer_id === user?.id;
+                                            const isSubmitter = comment.reviewer_id === requestSubmitter?.id;
+                                            const commenterName = isCurrentReviewer
+                                                ? user?.full_name || 'Reviewer'
+                                                : isSubmitter
+                                                    ? requestSubmitter?.full_name || 'Requester'
+                                                    : 'Reviewer';
+
+                                            return (
+                                                <div key={comment.id} className="py-3 first:pt-0 last:pb-0">
+                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+                                                        <div className="flex items-center gap-2">
+                                                            <p className="text-sm font-semibold text-gray-900">{commenterName}</p>
+                                                            {(isCurrentReviewer || isSubmitter) && (
+                                                                <Badge
+                                                                    variant={
+                                                                        isCurrentReviewer
+                                                                            ? (user?.role === 'admin'
+                                                                                ? 'danger'
+                                                                                : user?.role === 'reviewer'
+                                                                                    ? 'success'
+                                                                                    : 'info')
+                                                                            : (requestSubmitter?.role === 'admin'
+                                                                                ? 'danger'
+                                                                                : requestSubmitter?.role === 'reviewer'
+                                                                                    ? 'success'
+                                                                                    : 'info')
+                                                                    }
+                                                                >
+                                                                    {isCurrentReviewer ? user?.role : requestSubmitter?.role}
+                                                                </Badge>
+                                                            )}
+                                                        </div>
+                                                        <p className="text-xs text-gray-500">{formatHeaderDate(comment.created_at)}</p>
+                                                    </div>
+                                                    <p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">{comment.comment}</p>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
                             <div className="space-y-3">
@@ -371,54 +489,103 @@ export const ReviewerDashboard = () => {
                                     placeholder="Add a comment..."
                                     value={newComment}
                                     onChange={(e) => setNewComment(e.target.value)}
-                                    rows={3}
-                                    className="w-full"
+                                    onInput={(e) => autoExpandTextarea(e.currentTarget)}
+                                    rows={2}
+                                    className="w-full overflow-hidden"
                                 />
                                 <div className="flex justify-end">
                                     <Button
                                         variant="secondary"
                                         onClick={handleAddComment}
                                         disabled={!newComment.trim()}
+                                        loading={commentLoading}
                                     >
                                         Add Comment
                                     </Button>
                                 </div>
                             </div>
+                        </div>
 
-                            <div className="border-t border-gray-100 pt-4 space-y-3">
-                                <h4 className="text-sm font-medium text-gray-900">Decision</h4>
-                                <div className="flex flex-col sm:flex-row gap-3">
-                                    <Button
-                                        variant="success"
-                                        size="lg"
-                                        onClick={() => handleUpdateStatus('approved')}
-                                        loading={actionLoading}
-                                        icon={<CheckCircle className="w-4 h-4" />}
-                                        className="flex-1"
-                                    >
-                                        Approve
-                                    </Button>
-                                    <Button
-                                        variant="danger"
-                                        size="lg"
-                                        onClick={() => handleUpdateStatus('rejected')}
-                                        loading={actionLoading}
-                                        icon={<XCircle className="w-4 h-4" />}
-                                        className="flex-1"
-                                    >
-                                        Reject
-                                    </Button>
-                                    <Button
-                                        variant="outline"
-                                        size="lg"
-                                        onClick={() => handleUpdateStatus('under_review')}
-                                        loading={actionLoading}
-                                        icon={<Clock className="w-4 h-4" />}
-                                        className="flex-1"
-                                    >
-                                        Under Review
-                                    </Button>
+                        <div className="rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-4">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide pb-3 border-b border-gray-200">Activity History</h4>
+                            <div className="relative pl-6 space-y-4">
+                                <div className="absolute left-2 top-2 bottom-2 w-px bg-gray-200" />
+                                <div className="relative">
+                                    <span className="absolute -left-[22px] top-1 h-3 w-3 rounded-full bg-blue-200 border border-blue-300" />
+                                    <p className="text-sm text-gray-800">Request created</p>
+                                    <p className="text-xs text-gray-500">{formatHeaderDate(selectedRequest.created_at)}</p>
                                 </div>
+                                {selectedRequest.updated_at && selectedRequest.updated_at !== selectedRequest.created_at && (
+                                    <div className="relative">
+                                        <span className="absolute -left-[22px] top-1 h-3 w-3 rounded-full bg-green-200 border border-green-300" />
+                                        <p className="text-sm text-gray-800">Status updated to {selectedRequest.status.replace('_', ' ')}</p>
+                                        <p className="text-xs text-gray-500">{formatHeaderDate(selectedRequest.updated_at)}</p>
+                                    </div>
+                                )}
+                                {comments.slice(0, 2).map((comment) => (
+                                    <div key={`activity-${comment.id}`} className="relative">
+                                        <span className="absolute -left-[22px] top-1 h-3 w-3 rounded-full bg-violet-200 border border-violet-300" />
+                                        <p className="text-sm text-gray-800">Comment added</p>
+                                        <p className="text-xs text-gray-500">{formatHeaderDate(comment.created_at)}</p>
+                                    </div>
+                                ))}
+                                {comments.length === 0 && (!selectedRequest.updated_at || selectedRequest.updated_at === selectedRequest.created_at) && (
+                                    <p className="text-sm text-gray-500">No additional activity recorded.</p>
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="sticky bottom-0 rounded-2xl border border-gray-200 bg-white p-5 shadow-sm space-y-3">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Decision</h4>
+                            <p className="text-sm text-gray-500">Select your review decision.</p>
+
+                            {showRejectionReason && (
+                                <div className="space-y-2">
+                                    <label htmlFor="rejection-reason" className="text-sm font-medium text-gray-700">
+                                        Reason for rejection (required)
+                                    </label>
+                                    <textarea
+                                        id="rejection-reason"
+                                        value={rejectionReason}
+                                        onChange={(e) => setRejectionReason(e.target.value)}
+                                        rows={3}
+                                        className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-red-500 focus:border-transparent resize-y"
+                                        placeholder="Provide a clear reason for rejecting this request..."
+                                    />
+                                </div>
+                            )}
+
+                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                <Button
+                                    variant="success"
+                                    size="lg"
+                                    onClick={() => handleDecision('approved')}
+                                    loading={actionLoading}
+                                    icon={<CheckCircle className="w-4 h-4" />}
+                                    className="w-full"
+                                >
+                                    Approve
+                                </Button>
+                                <Button
+                                    variant="danger"
+                                    size="lg"
+                                    onClick={() => handleDecision('rejected')}
+                                    loading={actionLoading}
+                                    icon={<XCircle className="w-4 h-4" />}
+                                    className="w-full"
+                                >
+                                    Reject
+                                </Button>
+                                <Button
+                                    variant="outline"
+                                    size="lg"
+                                    onClick={() => handleDecision('under_review')}
+                                    loading={actionLoading}
+                                    icon={<Clock className="w-4 h-4" />}
+                                    className="w-full"
+                                >
+                                    Mark as Under Review
+                                </Button>
                             </div>
                         </div>
                     </div>

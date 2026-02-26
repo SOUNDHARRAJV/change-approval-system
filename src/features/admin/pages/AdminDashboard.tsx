@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Shield, LogOut, Users, FileText, UserCheck, Settings, Trash2, Lock, Filter } from 'lucide-react';
+import { Shield, LogOut, Users, FileText, UserCheck, Settings, Trash2, Lock, Filter, Paperclip, MessageSquare, ArrowRight } from 'lucide-react';
 import { Button } from '../../../shared/components/Button';
 import { Card, CardHeader, CardBody } from '../../../shared/components/Card';
 import { Modal } from '../../../shared/components/Modal';
@@ -36,6 +36,10 @@ export const AdminDashboard = () => {
     const [userTab, setUserTab] = useState<'admins' | 'reviewers' | 'users'>('admins');
     const [requestFilter, setRequestFilter] = useState<string>('all');
     const [actionLoading, setActionLoading] = useState(false);
+    const [internalCommentText, setInternalCommentText] = useState('');
+    const [internalComments, setInternalComments] = useState<
+        { id: string; author: string; comment: string; createdAt: string }[]
+    >([]);
     const [userSortOrder, setUserSortOrder] = useState<
         'id-asc' | 'id-desc' | 'active' | 'disabled' | 'date-asc' | 'date-desc'
     >('id-asc');
@@ -131,6 +135,8 @@ export const AdminDashboard = () => {
                 reviewerId: selectedRequest.reviewer_id ?? 'none',
                 status: selectedRequest.status
             });
+            setInternalCommentText('');
+            setInternalComments([]);
         }
     }, [selectedRequest]);
 
@@ -269,6 +275,90 @@ export const AdminDashboard = () => {
         { value: 'date-asc', label: 'DATE ASC' },
         { value: 'date-desc', label: 'DATE DESC' }
     ];
+
+    const workflowSteps: ChangeRequest['status'][] = ['pending', 'under_review', 'approved', 'rejected'];
+
+    const toLabel = (value: string) =>
+        value
+            .split('_')
+            .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+            .join(' ');
+
+    const getRequestDisplayId = (request: ChangeRequest) => {
+        const year = new Date(request.created_at).getFullYear();
+        const idPart = request.id?.replace(/[^A-Za-z0-9]/g, '').slice(0, 4).toUpperCase();
+        if (!idPart) return 'CR-XXXX';
+        return `CR-${Number.isNaN(year) ? 'XXXX' : year}-${idPart}`;
+    };
+
+    const formatHeaderDate = (value: string) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return 'Unknown date';
+        return new Intl.DateTimeFormat('en-GB', {
+            day: '2-digit',
+            month: 'short',
+            year: 'numeric'
+        }).format(date);
+    };
+
+    const formatRelativeTime = (value: string) => {
+        const date = new Date(value);
+        if (Number.isNaN(date.getTime())) return '';
+        const diffMs = Date.now() - date.getTime();
+        const diffMinutes = Math.floor(diffMs / (1000 * 60));
+        if (diffMinutes < 1) return 'just now';
+        if (diffMinutes < 60) return `${diffMinutes} minute${diffMinutes === 1 ? '' : 's'} ago`;
+        const diffHours = Math.floor(diffMinutes / 60);
+        if (diffHours < 24) return `${diffHours} hour${diffHours === 1 ? '' : 's'} ago`;
+        const diffDays = Math.floor(diffHours / 24);
+        return `${diffDays} day${diffDays === 1 ? '' : 's'} ago`;
+    };
+
+    const getAttachmentFileName = (url?: string | null) => {
+        if (!url) return 'Attached file';
+        const cleanUrl = url.split('?')[0];
+        const raw = cleanUrl.substring(cleanUrl.lastIndexOf('/') + 1);
+        if (!raw) return 'Attached file';
+        try {
+            return decodeURIComponent(raw);
+        } catch {
+            return raw;
+        }
+    };
+
+    const getSeverityMeta = (priority: ChangeRequest['priority']) => {
+        const meta = {
+            critical: { label: 'Critical', className: 'bg-red-100 text-red-700' },
+            high: { label: 'High', className: 'bg-orange-100 text-orange-700' },
+            medium: { label: 'Medium', className: 'bg-amber-100 text-amber-700' },
+            low: { label: 'Low', className: 'bg-emerald-100 text-emerald-700' }
+        };
+        return meta[priority] || { label: toLabel(priority), className: 'bg-gray-100 text-gray-700' };
+    };
+
+    const getStatusMeta = (status: ChangeRequest['status']) => {
+        const meta = {
+            pending: { label: 'Pending', className: 'bg-yellow-100 text-yellow-700' },
+            under_review: { label: 'Under Review', className: 'bg-blue-100 text-blue-700' },
+            approved: { label: 'Approved', className: 'bg-green-100 text-green-700' },
+            rejected: { label: 'Rejected', className: 'bg-rose-100 text-rose-700' }
+        };
+        return meta[status] || { label: toLabel(status), className: 'bg-gray-100 text-gray-700' };
+    };
+
+    const handlePostInternalComment = () => {
+        if (!internalCommentText.trim()) return;
+        setInternalComments((previous) => [
+            {
+                id: `local-${Date.now()}`,
+                author: user?.full_name || 'Admin',
+                comment: internalCommentText.trim(),
+                createdAt: new Date().toISOString()
+            },
+            ...previous
+        ]);
+        setInternalCommentText('');
+    };
 
     return (
         <div className="min-h-screen bg-gray-50">
@@ -648,86 +738,246 @@ export const AdminDashboard = () => {
                     setSelectedRequest(null);
                     setAttachmentPreviewUrl(null);
                     setSelectedRequestDraft(null);
+                    setInternalCommentText('');
+                    setInternalComments([]);
                 }}
                 title="Manage Change Request"
                 size="lg"
             >
                 {selectedRequest && (
-                    <div className="p-6">
-                        <div className="mb-6">
-                            <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-4">
-                                <h3 className="text-xl font-bold text-gray-900">{selectedRequest.title}</h3>
-                                <div className="flex flex-wrap gap-2">
-                                    <PriorityBadge priority={selectedRequest.priority} />
-                                    <StatusBadge status={selectedRequestDraft?.status || selectedRequest.status} />
+                    <div className="p-6 space-y-5">
+                        <div className="rounded-xl border border-gray-200 bg-white p-5">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                                <div className="space-y-1">
+                                    <p className="text-2xl font-bold text-gray-900 leading-tight">{selectedRequest.title}</p>
+                                    <p className="text-sm text-gray-500 font-medium">{getRequestDisplayId(selectedRequest)}</p>
+                                </div>
+                                <div className="flex flex-wrap gap-2 sm:justify-end">
+                                    {(() => {
+                                        const severityMeta = getSeverityMeta(selectedRequest.priority);
+                                        return (
+                                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${severityMeta.className}`}>
+                                                {severityMeta.label}
+                                            </span>
+                                        );
+                                    })()}
+                                    {(() => {
+                                        const statusMeta = getStatusMeta(selectedRequestDraft?.status as ChangeRequest['status'] || selectedRequest.status);
+                                        return (
+                                            <span className={`inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold ${statusMeta.className}`}>
+                                                {statusMeta.label}
+                                            </span>
+                                        );
+                                    })()}
                                 </div>
                             </div>
-                            <p className="text-gray-700 mb-4">{selectedRequest.description}</p>
-                            <div className="text-sm text-gray-600 mb-4">
-                                Created by:{' '}
-                                {userById.get(selectedRequest.user_id)?.full_name || 'Unknown'}{' '}
-                                {casIdMap.get(selectedRequest.user_id) ? `(${casIdMap.get(selectedRequest.user_id)})` : ''}
+                            <div className="mt-3 text-sm text-gray-600">
+                                Created by {userById.get(selectedRequest.user_id)?.full_name || 'Unknown'}
+                                {casIdMap.get(selectedRequest.user_id) ? ` (${casIdMap.get(selectedRequest.user_id)})` : ''}
                                 {' • '}
-                                {formatDate(selectedRequest.created_at)}
+                                {formatHeaderDate(selectedRequest.created_at)}
+                                {' • '}
+                                {formatRelativeTime(selectedRequest.created_at)}
                             </div>
-                            {selectedRequest.attachment_url && (
-                                <div className="mb-4">
-                                    <p className="text-sm text-gray-600 mb-2">Attachment</p>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setAttachmentPreviewUrl(selectedRequest.attachment_url || null)}
-                                    >
-                                        View Attachment
-                                    </Button>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-gray-50/50 p-5 space-y-4">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Request Details</h4>
+                            <div>
+                                <p className="text-xs font-medium text-gray-500 mb-1">Title</p>
+                                <p className="text-sm text-gray-900">{selectedRequest.title}</p>
+                            </div>
+                            {selectedRequest.description && (
+                                <div>
+                                    <p className="text-xs font-medium text-gray-500 mb-1">Description</p>
+                                    <p className="text-sm text-gray-700 whitespace-pre-wrap">{selectedRequest.description}</p>
                                 </div>
                             )}
+                            <div>
+                                <p className="text-xs font-medium text-gray-500 mb-2">Attachment</p>
+                                {selectedRequest.attachment_url ? (
+                                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between rounded-lg border border-gray-200 bg-white p-3">
+                                        <div className="flex items-center gap-2 min-w-0">
+                                            <Paperclip className="w-4 h-4 text-gray-500 flex-shrink-0" />
+                                            <p className="text-sm text-gray-700 truncate">{getAttachmentFileName(selectedRequest.attachment_url)}</p>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => setAttachmentPreviewUrl(selectedRequest.attachment_url || null)}
+                                        >
+                                            View Attachment
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    <p className="text-sm text-gray-500">No attachment provided.</p>
+                                )}
+                            </div>
                         </div>
 
-                        <div className="space-y-4">
-                            <Select
-                                label="Assign Reviewer"
-                                value={selectedRequestDraft?.reviewerId ?? selectedRequest.reviewer_id ?? 'none'}
-                                onChange={(e) =>
-                                    setSelectedRequestDraft({
-                                        reviewerId: e.target.value,
-                                        status: selectedRequestDraft?.status ?? selectedRequest.status
-                                    })
-                                }
-                                options={[
-                                    { value: 'none', label: 'No Reviewer' },
-                                    ...reviewerUsers.map(r => ({ value: r.id, label: r.full_name }))
-                                ]}
-                            />
-
-                            <Select
-                                label="Update Status"
-                                value={selectedRequestDraft?.status ?? selectedRequest.status}
-                                onChange={(e) =>
-                                    setSelectedRequestDraft({
-                                        reviewerId: selectedRequestDraft?.reviewerId ?? selectedRequest.reviewer_id ?? 'none',
-                                        status: e.target.value
-                                    })
-                                }
-                                options={[
-                                    { value: 'pending', label: 'Pending' },
-                                    { value: 'under_review', label: 'Under Review' },
-                                    { value: 'approved', label: 'Approved' },
-                                    { value: 'rejected', label: 'Rejected' }
-                                ]}
-                            />
+                        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-2">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Assignment</h4>
+                            <div>
+                                <label htmlFor="assigned-reviewer" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Assigned Reviewer
+                                </label>
+                                <select
+                                    id="assigned-reviewer"
+                                    value={selectedRequestDraft?.reviewerId ?? selectedRequest.reviewer_id ?? 'none'}
+                                    onChange={(e) =>
+                                        setSelectedRequestDraft({
+                                            reviewerId: e.target.value,
+                                            status: selectedRequestDraft?.status ?? selectedRequest.status
+                                        })
+                                    }
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                    <option value="none">No Reviewer</option>
+                                    {reviewerUsers.map((reviewer) => (
+                                        <option key={reviewer.id} value={reviewer.id}>
+                                            {reviewer.full_name}
+                                        </option>
+                                    ))}
+                                </select>
+                            </div>
+                            <p className="text-xs text-gray-500">Select reviewer responsible for evaluating this request.</p>
                         </div>
 
-                        <div className="mt-6 flex items-center justify-between gap-3">
+                        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Workflow Status</h4>
+                            <div className="flex flex-wrap items-center gap-2 text-sm">
+                                {workflowSteps.map((step, index) => {
+                                    const active = (selectedRequestDraft?.status ?? selectedRequest.status) === step;
+                                    return (
+                                        <div key={step} className="flex items-center gap-2">
+                                            <span
+                                                className={`inline-flex h-7 min-w-7 px-2 items-center justify-center rounded-full text-xs font-semibold ${active ? 'bg-blue-600 text-white' : 'bg-gray-100 text-gray-600'}`}
+                                            >
+                                                {active ? '●' : '○'}
+                                            </span>
+                                            <span className={active ? 'font-semibold text-gray-900' : 'text-gray-600'}>{toLabel(step)}</span>
+                                            {index < workflowSteps.length - 1 && <ArrowRight className="w-4 h-4 text-gray-400" />}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+
+                            <div>
+                                <label htmlFor="request-status" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Update Status
+                                </label>
+                                <select
+                                    id="request-status"
+                                    value={selectedRequestDraft?.status ?? selectedRequest.status}
+                                    onChange={(e) =>
+                                        setSelectedRequestDraft({
+                                            reviewerId: selectedRequestDraft?.reviewerId ?? selectedRequest.reviewer_id ?? 'none',
+                                            status: e.target.value
+                                        })
+                                    }
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                >
+                                    <option value="pending">Pending</option>
+                                    <option value="under_review">Under Review</option>
+                                    <option value="approved">Approved</option>
+                                    <option value="rejected">Rejected</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Activity</h4>
+                            <div className="relative">
+                                <div className="absolute left-[7px] top-2 bottom-2 w-px bg-gray-200" />
+                                <div className="space-y-4">
+                                    <div className="relative pl-7">
+                                        <span className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-blue-100 border border-blue-300" />
+                                        <p className="text-sm text-gray-800">
+                                            {userById.get(selectedRequest.user_id)?.full_name || 'Unknown'} created request
+                                        </p>
+                                        <p className="text-xs text-gray-500">
+                                            {new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' }).format(new Date(selectedRequest.created_at))}
+                                        </p>
+                                    </div>
+                                    {(selectedRequest.reviewer_id || selectedRequestDraft?.reviewerId !== 'none') && (
+                                        <div className="relative pl-7">
+                                            <span className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-violet-100 border border-violet-300" />
+                                            <p className="text-sm text-gray-800">
+                                                Assigned to{' '}
+                                                {userById.get(
+                                                    (selectedRequestDraft?.reviewerId && selectedRequestDraft.reviewerId !== 'none'
+                                                        ? selectedRequestDraft.reviewerId
+                                                        : selectedRequest.reviewer_id) || ''
+                                                )?.full_name || 'Reviewer'}
+                                            </p>
+                                            <p className="text-xs text-gray-500">Placeholder activity</p>
+                                        </div>
+                                    )}
+                                    <div className="relative pl-7">
+                                        <span className="absolute left-0 top-1.5 w-4 h-4 rounded-full bg-amber-100 border border-amber-300" />
+                                        <p className="text-sm text-gray-800">
+                                            Status changed to {toLabel(selectedRequestDraft?.status ?? selectedRequest.status)}
+                                        </p>
+                                        <p className="text-xs text-gray-500">Placeholder activity</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="rounded-xl border border-gray-200 bg-white p-5 space-y-4">
+                            <h4 className="text-sm font-semibold text-gray-900 uppercase tracking-wide">Internal Comments</h4>
+                            <div>
+                                <label htmlFor="internal-comment" className="block text-sm font-medium text-gray-700 mb-1">
+                                    Add Comment
+                                </label>
+                                <textarea
+                                    id="internal-comment"
+                                    value={internalCommentText}
+                                    onChange={(e) => setInternalCommentText(e.target.value)}
+                                    rows={4}
+                                    placeholder="Add an internal note for audit and collaboration..."
+                                    className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-y"
+                                />
+                            </div>
+                            <div className="flex justify-end">
+                                <Button
+                                    variant="secondary"
+                                    size="sm"
+                                    icon={<MessageSquare className="w-4 h-4" />}
+                                    onClick={handlePostInternalComment}
+                                    disabled={!internalCommentText.trim()}
+                                >
+                                    Post Comment
+                                </Button>
+                            </div>
+
+                            <div className="border-t border-gray-200 pt-4 space-y-3">
+                                {internalComments.length === 0 ? (
+                                    <p className="text-sm text-gray-500">No comments yet.</p>
+                                ) : (
+                                    internalComments.map((comment) => (
+                                        <div key={comment.id} className="rounded-lg border border-gray-200 bg-gray-50 p-3">
+                                            <div className="flex items-center justify-between gap-3">
+                                                <p className="text-sm font-medium text-gray-900">{comment.author}</p>
+                                                <p className="text-xs text-gray-500">{formatHeaderDate(comment.createdAt)}</p>
+                                            </div>
+                                            <p className="mt-2 text-sm text-gray-700 whitespace-pre-wrap">{comment.comment}</p>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </div>
+
+                        <div className="pt-2 border-t border-gray-200 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                             <Button
                                 variant="danger"
                                 icon={<Trash2 className="w-4 h-4" />}
                                 onClick={() => handleDeleteRequest(selectedRequest.id)}
                                 loading={actionLoading}
                             >
-                                Delete
+                                Archive
                             </Button>
-                            <div className="flex gap-3">
+                            <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-end">
                                 <Button variant="outline" onClick={() => setSelectedRequest(null)}>
                                     Close
                                 </Button>
@@ -736,7 +986,7 @@ export const AdminDashboard = () => {
                                     onClick={handleDoneRequestChanges}
                                     loading={actionLoading}
                                 >
-                                    Done
+                                    Save Changes
                                 </Button>
                             </div>
                         </div>

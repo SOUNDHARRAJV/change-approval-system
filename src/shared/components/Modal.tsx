@@ -1,4 +1,4 @@
-import { ReactNode, useEffect } from 'react';
+import { ReactNode, useEffect, useRef } from 'react';
 import { X } from 'lucide-react';
 
 interface ModalProps {
@@ -10,6 +10,8 @@ interface ModalProps {
 }
 
 export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalProps) => {
+    const modalRef = useRef<HTMLDivElement | null>(null);
+
     useEffect(() => {
         if (isOpen) {
             document.body.style.overflow = 'hidden';
@@ -20,6 +22,48 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalPr
             document.body.style.overflow = 'unset';
         };
     }, [isOpen]);
+
+    useEffect(() => {
+        if (!isOpen || !modalRef.current) return;
+
+        const focusableSelector = [
+            'a[href]',
+            'button:not([disabled])',
+            'textarea:not([disabled])',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(',');
+
+        const focusableElements = Array.from(modalRef.current.querySelectorAll<HTMLElement>(focusableSelector));
+        const firstElement = focusableElements[0];
+        const lastElement = focusableElements[focusableElements.length - 1];
+
+        firstElement?.focus();
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                onClose();
+                return;
+            }
+
+            if (event.key !== 'Tab' || focusableElements.length === 0) return;
+
+            if (event.shiftKey && document.activeElement === firstElement) {
+                event.preventDefault();
+                lastElement?.focus();
+            } else if (!event.shiftKey && document.activeElement === lastElement) {
+                event.preventDefault();
+                firstElement?.focus();
+            }
+        };
+
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [isOpen, onClose]);
 
     if (!isOpen) return null;
 
@@ -37,7 +81,11 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalPr
                 onClick={onClose}
             />
             <div
+                ref={modalRef}
                 className={`relative bg-white rounded-lg shadow-xl ${sizes[size]} w-full max-h-[90vh] overflow-hidden animate-in fade-in zoom-in duration-200`}
+                role="dialog"
+                aria-modal="true"
+                aria-label={title}
             >
                 <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200">
                     <h3 className="text-xl font-semibold text-gray-900">{title}</h3>
