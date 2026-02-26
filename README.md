@@ -1,6 +1,7 @@
 # Change Approval System
 
 A comprehensive change management system with role-based access control for submitting, reviewing, and approving change requests.
+
 ## Project Resources & Validation
 
 ## Live Demo:
