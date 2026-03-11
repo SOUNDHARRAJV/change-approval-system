@@ -249,6 +249,26 @@ export const UserDashboard = () => {
         }
     };
 
+    const formatRequestDescription = (description: string) => {
+        if (!description) return '';
+
+        let normalized = description
+            .replace(/\r\n/g, '\n')
+            .replace(/Issue Description:\s*\n+/gi, 'Issue Description: ')
+            .replace(/Proposed Solution:\s*\n+/gi, 'Proposed Solution: ')
+            .replace(/Expected Impact:\s*\n+/gi, 'Expected Impact: ')
+            .replace(/Additional Notes:\s*\n+/gi, 'Additional Notes: ')
+            .replace(/[ \t]+/g, ' ')
+            .trim();
+
+        normalized = normalized
+            .replace(/\s*(Expected Impact:)/gi, '\n$1')
+            .replace(/\s*(Additional Notes:)/gi, '\n$1')
+            .replace(/\n{2,}/g, '\n');
+
+        return normalized;
+    };
+
     const handleWithdrawOrDelete = async (request: ChangeRequest) => {
         const isApproved = request.status === 'approved';
         const actionLabel = isApproved ? 'delete' : 'withdraw';
@@ -483,18 +503,18 @@ export const UserDashboard = () => {
                                 {filteredRequests.map((request) => (
                                     <div
                                         key={request.id}
-                                        className="border border-gray-200 rounded-lg p-4 hover:shadow-md transition-shadow"
+                                        className="rounded-2xl border border-slate-200/80 bg-white/85 p-5 shadow-[0_6px_20px_rgba(15,23,42,0.06)] backdrop-blur-sm hover:shadow-[0_10px_28px_rgba(15,23,42,0.10)] transition-shadow"
                                     >
                                         <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-start mb-2">
-                                            <h3 className="font-semibold text-gray-900">{request.title}</h3>
+                                            <h3 className="text-xl font-semibold text-slate-900 tracking-tight">{request.title}</h3>
                                             <div className="flex flex-wrap gap-2">
                                                 <PriorityBadge priority={request.priority} />
                                                 <StatusBadge status={request.status} />
                                             </div>
                                         </div>
-                                        <p className="text-gray-600 text-sm mb-3">{request.description}</p>
+                                        <p className="text-slate-700 text-sm whitespace-pre-line leading-relaxed mb-4">{formatRequestDescription(request.description)}</p>
                                         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                                            <div className="text-xs text-gray-500">
+                                            <div className="text-xs text-slate-500">
                                                 Created: {formatDate(request.created_at)}
                                                 {' • Reviewer: '}
                                                 {request.reviewer_id
@@ -743,7 +763,7 @@ export const UserDashboard = () => {
                         <div className="rounded-xl border border-gray-200 bg-white p-5 shadow-sm space-y-3">
                             <h4 className="text-sm font-semibold uppercase tracking-wide text-gray-900 border-b border-gray-100 pb-2">Request Description</h4>
                             <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-4">
-                                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{selectedRequest.description || 'No description provided.'}</p>
+                                <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{formatRequestDescription(selectedRequest.description) || 'No description provided.'}</p>
                             </div>
                         </div>
 
