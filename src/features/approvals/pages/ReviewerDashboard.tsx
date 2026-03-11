@@ -555,34 +555,31 @@ export const ReviewerDashboard = () => {
                                 </div>
                             )}
 
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <div className="flex flex-wrap justify-end gap-3">
                                 <Button
                                     variant="success"
-                                    size="lg"
                                     onClick={() => handleDecision('approved')}
                                     loading={actionLoading}
                                     icon={<CheckCircle className="w-4 h-4" />}
-                                    className="w-full"
+                                    className="min-w-[130px] rounded-md"
                                 >
                                     Approve
                                 </Button>
                                 <Button
                                     variant="danger"
-                                    size="lg"
                                     onClick={() => handleDecision('rejected')}
                                     loading={actionLoading}
                                     icon={<XCircle className="w-4 h-4" />}
-                                    className="w-full"
+                                    className="min-w-[130px] rounded-md"
                                 >
                                     Reject
                                 </Button>
                                 <Button
                                     variant="outline"
-                                    size="lg"
                                     onClick={() => handleDecision('under_review')}
                                     loading={actionLoading}
                                     icon={<Clock className="w-4 h-4" />}
-                                    className="w-full"
+                                    className="min-w-[160px] rounded-md"
                                 >
                                     Mark as Under Review
                                 </Button>

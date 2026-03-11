@@ -11,6 +11,11 @@ interface ModalProps {
 
 export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalProps) => {
     const modalRef = useRef<HTMLDivElement | null>(null);
+    const onCloseRef = useRef(onClose);
+
+    useEffect(() => {
+        onCloseRef.current = onClose;
+    }, [onClose]);
 
     useEffect(() => {
         if (isOpen) {
@@ -44,7 +49,7 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === 'Escape') {
                 event.preventDefault();
-                onClose();
+                onCloseRef.current();
                 return;
             }
 
@@ -63,7 +68,7 @@ export const Modal = ({ isOpen, onClose, title, children, size = 'md' }: ModalPr
         return () => {
             document.removeEventListener('keydown', handleKeyDown);
         };
-    }, [isOpen, onClose]);
+    }, [isOpen]);
 
     if (!isOpen) return null;
 
